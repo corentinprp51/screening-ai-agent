@@ -24,7 +24,7 @@ def services():
 
 def qualify(screening: ScreeningService, phone: str, name: str) -> None:
     screening.apply(phone)
-    for text in ["yes", name, "full_time", "evening", "2", "immediate", "yes"]:
+    for text in ["yes", name, "yes", "yes", "full_time", "evening", "2", "immediate", "yes"]:
         screening.handle_message(phone, text)
 
 
@@ -72,9 +72,11 @@ def test_the_detail_shows_transcript_fields_flags_and_events(services):
 
     assert detail.handle == "600000002"
     assert detail.status == Status.QUALIFIED
-    assert [m.role for m in detail.messages] == ["agent"] + ["candidate", "agent"] * 7
+    assert [m.role for m in detail.messages] == ["agent"] + ["candidate", "agent"] * 9
     name, *others = detail.fields
     assert [(field.field, field.display) for field in others] == [
+        ("license", "yes"),
+        ("own_vehicle", "yes"),
         ("availability", "full_time"),
         ("schedule", "evening"),
         ("experience", "2 years"),
@@ -92,7 +94,7 @@ def test_the_detail_shows_transcript_fields_flags_and_events(services):
     assert [e.type for e in detail.events] == [
         "application_received",
         "consent_given",
-        *["field_captured"] * 5,
+        *["field_captured"] * 7,
         "outcome",
     ]
 

@@ -15,7 +15,7 @@ task dev:test
 
 `CLIENT_ID` selects the client config in `config/clients/` (default `grupo_sazon`). `DATABASE_URL` defaults to `sqlite:///data/screening.db`; delete `data/*.db` when the schema changes.
 
-In v0 the FakeLLM does no language understanding: type canonical values (`yes`, `no`, `Ana López`).
+In v0 the FakeLLM does no language understanding: type canonical values (`yes`, `no`, `shared` for a shared vehicle, `Ana López`).
 
 ## Architecture
 
@@ -43,4 +43,6 @@ A turn: LLM extraction → validation in code → state update → `next_action(
 - **An opt-out after consent closes as Withdrawn from any stage.** The extraction's `opt_out` intent sets `opted_out` on the state and `next_action()` returns the Withdrawn close; an `opted_out` event keeps the stage it happened at. During the consent question, a refusal is a declined consent instead.
 - **Messages after an outcome never reopen the screening.** Any message while the status is not In progress (an outcome or Rejection proposed) is stored and answered with the fixed `after_close` YAML template in the candidate's last language, with no LLM call. The candidate gets the `message_after_close` flag and moves to the top of the queue; reopening is a recruiter decision.
 - **An LLM failure leaves the state unchanged.** Both LLM calls of a turn run before any write, and the turn's events are buffered until the reply exists. If either call raises, the service stores the candidate's message, sends the `fallback` YAML template in their last language, flags `llm_failure` and records an event; the next message gets the same question. The timeout and the single retry with the validation error fed back belong to the v1 PydanticAI adapter; the service only sees the final failure.
+- **Knock-outs are checked on every turn, before the fields are walked.** A field's `knock_out` flag comes from the YAML; only a validated "no" (no license, no own vehicle) fails it. A failed knock-out never rejects: the status becomes Rejection proposed, the questions stop, and the `Close` action carries the rule and the YAML review delay so the reply can say when a recruiter answers. A `rejection_proposed` event records the rule and the candidate's answer.
+- **An unclear knock-out answer goes to needs review, never to a rejection.** A license answer still unparseable after three attempts is needs review and the screening continues. A shared or borrowed vehicle gets one follow-up on access; an explicit yes or no settles it, anything else marks the field needs review and leaves the knock-out to a recruiter (unlike the surname, it is not accepted with a flag). A license or vehicle type is kept once given and never asked for.
 - **The queue is sorted by last activity until the priority score lands.** Status tabs cover every status; Rejection proposed is labelled "To confirm". The dashboard has no authentication in v0.

@@ -7,9 +7,36 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, BeforeValidator, Field, JsonValue, model_validator
 
 Language = Literal["es", "en"]
-FieldType = Literal["name", "availability", "schedule", "experience", "start_date"]
+FieldType = Literal[
+    "name", "license", "own_vehicle", "availability", "schedule", "experience", "start_date"
+]
 AvailabilityOption = Literal["full_time", "part_time", "weekends"]
 ScheduleOption = Literal["morning", "afternoon", "evening", "flexible"]
+VehicleType = Literal["car", "moped_motorcycle"]
+
+
+class License(BaseModel):
+    has_license: bool
+    type: VehicleType | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_answer(cls, data: JsonValue) -> JsonValue:
+        """A bare answer is the yes or no ("yes" → has a license)."""
+        return {"has_license": data} if isinstance(data, bool | str) else data
+
+
+class OwnVehicle(BaseModel):
+    """`shared` is a shared or borrowed vehicle: it leaves the knock-out undecided."""
+
+    owns_vehicle: bool | Literal["shared"]
+    type: VehicleType | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_answer(cls, data: JsonValue) -> JsonValue:
+        """A bare answer is the yes, no or shared ("no" → no own vehicle)."""
+        return {"owns_vehicle": data} if isinstance(data, bool | str) else data
 
 
 class Experience(BaseModel):
@@ -24,7 +51,7 @@ class Experience(BaseModel):
 
 
 # The value types a field can hold. A start date is stored as "immediate" or an ISO date.
-FieldValue = str | list[str] | Experience
+FieldValue = str | list[str] | Experience | License | OwnVehicle
 FieldStatus = Literal["empty", "incomplete", "valid", "needs_review"]
 
 
@@ -48,6 +75,7 @@ class Persona(BaseModel):
 
 class FieldConfig(BaseModel):
     type: FieldType
+    knock_out: bool = False
 
 
 class Templates(BaseModel):
@@ -61,6 +89,7 @@ class ClientConfig(BaseModel):
     persona: Persona
     default_language: Language
     fields: list[FieldConfig] = Field(min_length=1)
+    review_delay_hours: int = Field(gt=0)  # a recruiter replies to a proposed rejection within
     templates: Templates
 
     def greeting(self, language: Language) -> str:
@@ -157,6 +186,8 @@ class Extraction(BaseModel):
     intent: Literal["answer", "opt_out"] = "answer"
     yes_no: bool | None = None
     name: Extracted[str] | None = None
+    license: Extracted[License] | None = None
+    own_vehicle: Extracted[OwnVehicle] | None = None
     availability: Extracted[Availability] | None = None
     schedule: Extracted[ScheduleOption] | None = None
     experience: Extracted[Experience] | None = None

@@ -11,6 +11,8 @@ from app.domain.models import (
     Experience,
     FieldState,
     FieldValue,
+    License,
+    OwnVehicle,
     ScheduleOption,
 )
 
@@ -18,6 +20,9 @@ from app.domain.models import (
 MAX_ATTEMPTS = 3
 MAX_EXPERIENCE_YEARS = 40
 START_DATE_HORIZON_DAYS = 90
+# A missing part that decides a knock-out: left unresolved after its follow-up, the
+# field goes to a recruiter instead of being accepted with a flag.
+DECIDES_KNOCK_OUT = {"access"}
 
 # Unicode letter runs joined by a single space, hyphen or apostrophe.
 NAME_PATTERN = re.compile(r"[^\W\d_]+(?:[ '\-][^\W\d_]+)*")
@@ -47,6 +52,25 @@ def validate_name(answer: str, current: FieldState, today: date) -> Verdict:
     if len(name.split()) < 2:
         return Verdict("incomplete", value=name, missing="surname")
     return Verdict("valid", value=name)
+
+
+def validate_license(answer: License, current: FieldState, today: date) -> Verdict:
+    """An explicit yes or no; a type given earlier is kept, never re-asked."""
+    return Verdict("valid", value=_keep_type(answer, current))
+
+
+def validate_own_vehicle(answer: OwnVehicle, current: FieldState, today: date) -> Verdict:
+    """An explicit yes or no; a shared or borrowed vehicle gets one follow-up on access."""
+    answer = _keep_type(answer, current)
+    if answer.owns_vehicle == "shared":
+        return Verdict("incomplete", value=answer, missing="access")
+    return Verdict("valid", value=answer)
+
+
+def _keep_type[T: (License, OwnVehicle)](answer: T, current: FieldState) -> T:
+    if answer.type is None and isinstance(current.value, License | OwnVehicle):
+        return answer.model_copy(update={"type": current.value.type})
+    return answer
 
 
 def validate_availability(answer: list[str], current: FieldState, today: date) -> Verdict:
@@ -86,6 +110,8 @@ def validate_start_date(answer: str | date, current: FieldState, today: date) ->
 # Each validator receives the typed value of its part of the Extraction.
 VALIDATORS: dict[str, Callable[[FieldValue | date, FieldState, date], Verdict]] = {
     "name": validate_name,
+    "license": validate_license,
+    "own_vehicle": validate_own_vehicle,
     "availability": validate_availability,
     "schedule": validate_schedule,
     "experience": validate_experience,
@@ -102,7 +128,8 @@ def update_field(
     """Apply a verdict to a field.
 
     An incomplete answer gets one follow-up; if the follow-up does not complete it,
-    the earlier value is accepted with a `<missing>_missing` flag. An invalid answer
+    the earlier value is accepted with a `<missing>_missing` flag, or marked needs review
+    when the missing part decides a knock-out. An invalid answer
     uses one attempt and clears the value; the last attempt marks the field needs review.
     """
     if verdict.status == "valid":
@@ -115,6 +142,8 @@ def update_field(
             flags=verdict.flags,
         )
     if current.status == "incomplete":
+        if current.missing in DECIDES_KNOCK_OUT:
+            return current.model_copy(update={"status": "needs_review", "missing": None})
         return current.model_copy(
             update={
                 "status": "valid",
@@ -139,6 +168,20 @@ def update_field(
     )
 
 
+@dataclass(frozen=True)
+class KnockOut:
+    rule: str
+    fails: Callable[[FieldValue], bool]
+
+
+# Applied to a valid field whose config has `knock_out: true`: only an explicit "no" fails,
+# an unclear answer is needs review and left to a recruiter.
+KNOCK_OUTS: dict[str, KnockOut] = {
+    "license": KnockOut("no_license", lambda value: value.has_license is False),
+    "own_vehicle": KnockOut("no_own_vehicle", lambda value: value.owns_vehicle is False),
+}
+
+
 def format_value(value: FieldValue | None) -> str:
     """A field value as shown in the recap and on the dashboard."""
     match value:
@@ -148,5 +191,11 @@ def format_value(value: FieldValue | None) -> str:
             return ", ".join(value)
         case Experience(years=years, platforms=platforms):
             return f"{years} years" + (f" ({', '.join(platforms)})" if platforms else "")
+        case (
+            License(has_license=answer, type=vehicle_type)
+            | OwnVehicle(owns_vehicle=answer, type=vehicle_type)
+        ):
+            label = answer if answer == "shared" else ("yes" if answer else "no")
+            return label + (f" ({vehicle_type})" if vehicle_type else "")
         case _:
             return value
