@@ -504,7 +504,7 @@ def test_a_clear_answer_to_the_shared_vehicle_follow_up_settles_the_field():
 
 
 def test_an_expired_license_gets_one_follow_up_then_proposes_a_rejection():
-    service, _ = make_service()
+    service, repo = make_service()
     service.apply(PHONE)
     answer(service, "yes", "Ana López")
 
@@ -512,7 +512,12 @@ def test_an_expired_license_gets_one_follow_up_then_proposes_a_rejection():
     assert service.handle_message(HANDLE, "pending") == (
         "[fake] close:no_license (reply within 24 h)"
     )
-    assert service.candidate(HANDLE).status == Status.REJECTION_PROPOSED
+    candidate = service.candidate(HANDLE)
+    assert candidate.status == Status.REJECTION_PROPOSED
+    events = repo.list_events(candidate.id)
+    assert [e.payload for e in events if e.type == "rejection_proposed"] == [
+        {"rule": "no_license", "answer": "pending"}
+    ]
 
 
 def test_an_unclear_answer_to_the_license_follow_up_is_treated_as_no():
