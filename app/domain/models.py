@@ -158,6 +158,7 @@ class ClientConfig(BaseModel):
     call_within_hours: int = Field(gt=0)  # a recruiter calls a qualified candidate within
     confidence_threshold: float = Field(ge=0, le=1)  # below it, a value is confirmed first
     service_areas: ServiceAreas = Field(min_length=1)
+    platforms: list[str] = Field(min_length=1)  # known delivery platforms, anything else is other
     scoring: Scoring
     templates: Templates
 

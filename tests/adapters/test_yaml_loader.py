@@ -11,3 +11,9 @@ def test_a_knock_out_flag_on_a_field_type_without_a_rule_fails_at_load(tmp_path)
 
     with pytest.raises(ValueError, match="name"):
         load_client_config("bad", config_dir=tmp_path)
+
+
+def test_the_client_platforms_are_loaded():
+    config = load_client_config("grupo_sazon")
+
+    assert config.platforms == ["Glovo", "Uber Eats", "Just Eat", "Rappi", "Didi Food"]

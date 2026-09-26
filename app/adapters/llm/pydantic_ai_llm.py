@@ -31,6 +31,8 @@ pydantic_ai.BANNER_ENABLED = False
 
 EXTRACT_TEMPERATURE = 0.0
 WRITE_TEMPERATURE = 0.4
+MAX_MESSAGE_CHARS = 1000  # a longer candidate message is cut before it reaches the prompt
+MESSAGE_TAG = "candidate_message"
 LANGUAGE_NAMES: dict[Language, str] = {"es": "Spanish", "en": "English"}
 
 _prompts = Environment(
@@ -68,11 +70,18 @@ class PydanticAILLM:
         today: date,
         last_agent_message: str | None,
     ) -> Extraction:
+        # The message is data: capped, and without angle brackets it cannot write a tag that
+        # closes the delimiters wrapping it, whatever its spelling.
+        message = message.replace("<", "").replace(">", "")
         prompt = _prompts.get_template("extract.md").render(
-            message=message,
+            message=message[:MAX_MESSAGE_CHARS],
+            tag=MESSAGE_TAG,
             kind=type(action).__name__,
             action=action,
             today=today.isoformat(),
+            language=state.language,
+            default_language=self._config.default_language,
+            platforms=self._config.platforms,
             last_agent_message=last_agent_message,
         )
         return self._run("extract", self._extractor, prompt, EXTRACT_TEMPERATURE)

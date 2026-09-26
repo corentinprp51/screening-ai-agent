@@ -1,7 +1,8 @@
 """A smoke run against the real LLM: `task dev:smoke`, with `LLM_MODEL` and `OPENAI_API_KEY`
 in `.env`. Scripted candidate messages go through the ScreeningService on an in-memory
 database; each extraction, reply and token usage is printed. Not part of `task dev:test`:
-it calls the API and its output varies."""
+it calls the API and its output varies. Read it by hand: colloquial years, platforms, a
+relative date, a language switch and a bare number keeping the language."""
 
 import logging
 import os
@@ -14,18 +15,34 @@ from app.api.deps import make_llm
 from app.application.ports import LLMPort
 from app.application.screening_service import ScreeningService
 
-PHONE = "600000001"
-MESSAGES = [
-    "hola! sí, adelante",
-    "Me llamo Ana López",
-    "sí, tengo carnet de coche",
-    "sí, tengo un Seat Ibiza",
-    "vivo en Getafe",
-    "busco jornada completa, mejor por la noche",
-    "un par de años en Glovo",
-    "puedo empezar el lunes",
-    "sí, todo correcto",
-]
+# Each conversation is a phone number and the candidate's messages.
+CONVERSATIONS = {
+    # Colloquial answers: a moped license, a couple of years, platforms, a relative date.
+    "600000001": [
+        "hola! sí, adelante",
+        "Me llamo Ana López",
+        "sí, de moto",
+        "sí, tengo una moto mía",
+        "vivo en Getafe",
+        "busco jornada completa, mejor por la noche",
+        "un par de años en Glovo y Uber Eats",
+        "puedo empezar el lunes",
+        "sí, todo correcto",
+    ],
+    # A switch to English, then a bare number that must keep the conversation in English.
+    "600000002": [
+        "hola, sí",
+        "Me llamo John Smith",
+        "Sorry, can we do this in English? Yes, I have a car license",
+        "yes, my own car",
+        "I live in Chamberí, Madrid",
+        "part time",
+        "evenings",
+        "2",
+        "next week",
+        "yes",
+    ],
+}
 
 
 class PrintingLLM:
@@ -56,17 +73,19 @@ def main() -> None:
 
     repo = SqliteCandidateRepository(create_sqlite_engine("sqlite://"))
     service = ScreeningService(config, PrintingLLM(llm), repo, SystemClock())
-    service.apply(PHONE)
-    print(f"agent> {service.transcript(PHONE)[0].content}")
-    for text in MESSAGES:
-        print(f"you> {text}")
-        print(f"agent> {service.handle_message(PHONE, text)}")
+    for phone, messages in CONVERSATIONS.items():
+        print(f"\n=== {phone}")
+        service.apply(phone)
+        print(f"agent> {service.transcript(phone)[0].content}")
+        for text in messages:
+            print(f"you> {text}")
+            print(f"agent> {service.handle_message(phone, text)}")
 
-    candidate = service.candidate(PHONE)
-    print(f"\nstatus: {candidate.status}, score: {candidate.score.total}")
-    print(f"flags: {candidate.state.all_flags()}")
-    if candidate.summary:
-        print(f"summary: {candidate.summary.text}")
+        candidate = service.candidate(phone)
+        print(f"\nstatus: {candidate.status}, score: {candidate.score.total}")
+        print(f"flags: {candidate.state.all_flags()}")
+        if candidate.summary:
+            print(f"summary: {candidate.summary.text}")
 
 
 if __name__ == "__main__":
