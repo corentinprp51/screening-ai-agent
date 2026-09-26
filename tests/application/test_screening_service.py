@@ -150,15 +150,18 @@ def test_an_invalid_volunteered_answer_is_ignored():
     )
 
 
-def test_a_start_date_beyond_90_days_is_kept_with_a_flag():
+def test_a_start_date_beyond_90_days_is_kept_with_a_flag_that_does_not_change_the_outcome():
     service, _ = make_service()
     service.apply(PHONE)
     answer(service, "yes", "Ana López", "full_time", "evening", "2")
 
     assert service.handle_message(HANDLE, "2027-01-15").startswith("[fake] recap")
+    assert service.handle_message(HANDLE, "yes") == "[fake] close:qualified"
 
-    start_date = service.candidate(HANDLE).state.fields["start_date"]
+    candidate = service.candidate(HANDLE)
+    start_date = candidate.state.fields["start_date"]
     assert (start_date.value, start_date.flags) == ("2027-01-15", ["start_date_beyond_90_days"])
+    assert candidate.status == Status.QUALIFIED
 
 
 def test_a_past_start_date_is_asked_again():
