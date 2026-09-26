@@ -7,6 +7,10 @@ default_language: es
 # Asked in this order after consent.
 fields:
   - type: name
+  - type: availability
+  - type: schedule
+  - type: experience
+  - type: start_date
 
 templates:
   greeting:

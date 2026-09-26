@@ -24,7 +24,9 @@ class FollowUp:
 
 @dataclass(frozen=True)
 class Recap:
-    pass
+    """Lists every field, in config order."""
+
+    fields: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -37,7 +39,7 @@ Action = Greet | Ask | FollowUp | Recap | Close
 
 
 def next_action(state: CandidateState, config: ClientConfig) -> Action:
-    """Consent → fields in config order → recap → close."""
+    """Consent → fields in config order (needs-review fields are skipped) → recap → close."""
     if state.consent is None:
         return Greet()
     if state.consent is False:
@@ -49,7 +51,11 @@ def next_action(state: CandidateState, config: ClientConfig) -> Action:
         if field.status == "incomplete":
             return FollowUp(field_config.type, missing=field.missing)
     if not state.recap_confirmed:
-        return Recap()
+        return Recap(fields=tuple(field_config.type for field_config in config.fields))
+    if any(
+        state.field(field_config.type).status == "needs_review" for field_config in config.fields
+    ):
+        return Close(status=Status.QUALIFIED_TO_REVIEW)
     return Close(status=Status.QUALIFIED)
 
 

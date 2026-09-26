@@ -28,7 +28,7 @@
           {% for field in candidate.fields %}
           <tr class="border-b last:border-0 {{ 'bg-amber-50' if field.needs_review }}">
             <td class="p-3 font-medium">{{ field.field }}</td>
-            <td class="p-3">{{ field.value if field.value is not none else "—" }}</td>
+            <td class="p-3">{{ field.display }}</td>
             <td class="p-3 text-slate-600">{{ field.raw_answer or "—" }}</td>
             <td class="p-3">{{ "%.2f"|format(field.confidence) if field.confidence is not none else "—" }}</td>
             <td class="p-3">

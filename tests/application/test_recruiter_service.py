@@ -24,7 +24,7 @@ def services():
 
 def qualify(screening: ScreeningService, phone: str, name: str) -> None:
     screening.apply(phone)
-    for text in ["yes", name, "yes"]:
+    for text in ["yes", name, "full_time", "evening", "2", "immediate", "yes"]:
         screening.handle_message(phone, text)
 
 
@@ -72,8 +72,14 @@ def test_the_detail_shows_transcript_fields_flags_and_events(services):
 
     assert detail.handle == "600000002"
     assert detail.status == Status.QUALIFIED
-    assert [m.role for m in detail.messages] == ["agent"] + ["candidate", "agent"] * 3
-    [name] = detail.fields
+    assert [m.role for m in detail.messages] == ["agent"] + ["candidate", "agent"] * 7
+    name, *others = detail.fields
+    assert [(field.field, field.display) for field in others] == [
+        ("availability", "full_time"),
+        ("schedule", "evening"),
+        ("experience", "2 years"),
+        ("start_date", "immediate"),
+    ]
     assert (name.field, name.value, name.raw_answer, name.confidence, name.verdict) == (
         "name",
         "Ana López",
@@ -86,7 +92,7 @@ def test_the_detail_shows_transcript_fields_flags_and_events(services):
     assert [e.type for e in detail.events] == [
         "application_received",
         "consent_given",
-        "field_captured",
+        *["field_captured"] * 5,
         "outcome",
     ]
 
@@ -96,7 +102,7 @@ def test_the_detail_lists_fields_not_yet_answered(services):
     screening.apply("600000001")
     [row] = recruiter.queue()
 
-    [name] = recruiter.detail(row.id).fields
+    name = recruiter.detail(row.id).fields[0]
 
     assert (name.field, name.value, name.verdict) == ("name", None, "empty")
 

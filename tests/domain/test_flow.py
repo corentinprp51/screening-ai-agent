@@ -15,10 +15,13 @@ CONFIG = ClientConfig(
     client_id="test",
     persona=Persona(agent_name="Lucía", client_name="Test"),
     default_language="es",
-    fields=[FieldConfig(type="name")],
+    fields=[FieldConfig(type="name"), FieldConfig(type="schedule")],
     templates=Templates(greeting={"es": "hola", "en": "hi"}),
 )
 VALID_NAME = FieldState(status="valid", value="Ana López")
+VALID_SCHEDULE = FieldState(status="valid", value="evening")
+NEEDS_REVIEW = FieldState(status="needs_review", attempts=3)
+RECAP = Recap(fields=("name", "schedule"))
 
 
 @pytest.mark.parametrize(
@@ -38,10 +41,34 @@ VALID_NAME = FieldState(status="valid", value="Ana López")
             ),
             FollowUp("name", missing="surname"),
         ),
-        (CandidateState(consent=True, fields={"name": VALID_NAME}), Recap()),
+        (CandidateState(consent=True, fields={"name": VALID_NAME}), Ask("schedule", attempt=0)),
         (
-            CandidateState(consent=True, fields={"name": VALID_NAME}, recap_confirmed=True),
+            CandidateState(consent=True, fields={"schedule": VALID_SCHEDULE}),
+            Ask("name", attempt=0),
+        ),
+        (
+            CandidateState(consent=True, fields={"name": NEEDS_REVIEW}),
+            Ask("schedule", attempt=0),
+        ),
+        (
+            CandidateState(consent=True, fields={"name": VALID_NAME, "schedule": VALID_SCHEDULE}),
+            RECAP,
+        ),
+        (
+            CandidateState(
+                consent=True,
+                fields={"name": VALID_NAME, "schedule": VALID_SCHEDULE},
+                recap_confirmed=True,
+            ),
             Close(status=Status.QUALIFIED),
+        ),
+        (
+            CandidateState(
+                consent=True,
+                fields={"name": VALID_NAME, "schedule": NEEDS_REVIEW},
+                recap_confirmed=True,
+            ),
+            Close(status=Status.QUALIFIED_TO_REVIEW),
         ),
     ],
 )
@@ -55,7 +82,7 @@ def test_next_action(state, expected):
         (Greet(), "consent"),
         (Ask("name", attempt=0), "name"),
         (FollowUp("name", missing="surname"), "name"),
-        (Recap(), "recap"),
+        (RECAP, "recap"),
         (Close(status=Status.QUALIFIED), "closed"),
     ],
 )
