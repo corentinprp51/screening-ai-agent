@@ -16,11 +16,23 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from app.adapters.clock import FixedClock
 from app.adapters.config.yaml_loader import load_client_config
-from app.adapters.llm.pydantic_ai_llm import MAX_MESSAGE_CHARS, MESSAGE_TAG, PydanticAILLM
+from app.adapters.llm.pydantic_ai_llm import (
+    MAX_MESSAGE_CHARS,
+    MAX_SUMMARY_CHARS,
+    MESSAGE_TAG,
+    PydanticAILLM,
+)
 from app.adapters.persistence.sqlite_repo import SqliteCandidateRepository, create_sqlite_engine
-from app.application.screening_service import ScreeningService
+from app.application.screening_service import ScreeningService, write_summary
 from app.domain.flow import Ask, AskCorrection, Close, Confirm, FollowUp, Greet, Recap
-from app.domain.models import CandidateState, Extraction, FieldState, Message, Status
+from app.domain.models import (
+    Candidate,
+    CandidateState,
+    Extraction,
+    FieldState,
+    Message,
+    Status,
+)
 
 NOW = datetime(2026, 9, 26, 10, 0, tzinfo=UTC)
 CONFIG = load_client_config("grupo_sazon")
@@ -225,6 +237,61 @@ def test_summarize_writes_the_text_from_the_facts():
     assert summary == "Ana López, qualified: call within 48 h."
     assert model.settings()["temperature"] == 0.4
     assert "Ana López" in model.prompt()
+
+
+FOUR_LINES = "Ana López, 2 años de experiencia.\nTodo válido.\nSin flags.\nLlamar en 48 h."
+
+
+@pytest.mark.parametrize(
+    ("summary", "reason"),
+    [
+        (FOUR_LINES, "at most 3 lines"),
+        ("a" * (MAX_SUMMARY_CHARS + 1), f"at most {MAX_SUMMARY_CHARS} characters"),
+    ],
+)
+def test_a_summary_too_long_is_retried_once_with_the_reason_fed_back(summary, reason):
+    model = ScriptedModel(summary, "Ana López, cualificada.\nNada que revisar.\nLlamar en 48 h.")
+
+    text = adapter(model).summarize({"status": "qualified"}, "es")
+
+    assert text == "Ana López, cualificada.\nNada que revisar.\nLlamar en 48 h."
+    retry_messages, _ = model.requests[1]
+    [retry] = [p for p in retry_messages[-1].parts if isinstance(p, RetryPromptPart)]
+    assert reason in retry.model_response()
+
+
+def test_blank_lines_do_not_count_and_are_dropped():
+    model = ScriptedModel("Ana López, cualificada.\n\nNada que revisar.\n\nLlamar en 48 h.\n")
+
+    text = adapter(model).summarize({"status": "qualified"}, "es")
+
+    assert text == "Ana López, cualificada.\nNada que revisar.\nLlamar en 48 h."
+    assert len(model.requests) == 1
+
+
+def test_a_second_summary_too_long_raises():
+    model = ScriptedModel(FOUR_LINES, FOUR_LINES)
+
+    with pytest.raises(UnexpectedModelBehavior):
+        adapter(model).summarize({"status": "qualified"}, "es")
+
+
+def test_a_failed_summary_keeps_the_facts_and_flags_the_candidate():
+    candidate = Candidate(
+        client_id=CONFIG.client_id,
+        handle="600000001",
+        status=Status.QUALIFIED,
+        created_at=NOW,
+        updated_at=NOW,
+    )
+    model = ScriptedModel(FOUR_LINES, FOUR_LINES)
+
+    error = write_summary(candidate, CONFIG, adapter(model))
+
+    assert isinstance(error, UnexpectedModelBehavior)
+    assert candidate.summary.text is None
+    assert candidate.summary.facts["status"] == "qualified"
+    assert candidate.state.flags == ["llm_failure"]
 
 
 def test_token_usage_is_logged_per_call(caplog):
