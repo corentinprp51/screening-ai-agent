@@ -6,6 +6,7 @@ from app.adapters.clock import FixedClock
 from app.adapters.config.yaml_loader import load_client_config
 from app.adapters.llm.fake_llm import FakeLLM
 from app.adapters.persistence.sqlite_repo import SqliteCandidateRepository, create_sqlite_engine
+from app.application.ports import RECENT_MESSAGES
 from app.application.recruiter_service import (
     LLMUnavailable,
     NotRejectionProposed,
@@ -325,3 +326,31 @@ def test_an_override_onto_another_failed_knock_out_writes_a_new_summary(services
     candidate = screening.candidate("600000001")
     assert candidate.status == Status.REJECTION_PROPOSED
     assert candidate.summary.facts["rule"] == "no_own_vehicle"
+
+
+def recent_transcript(recruiter: RecruiterService, candidate_id: int) -> list[tuple[str, str]]:
+    messages = recruiter.detail(candidate_id).messages
+    assert len(messages) > RECENT_MESSAGES  # the window really cuts the transcript
+    return [(m.role, m.content) for m in messages[-RECENT_MESSAGES:]]
+
+
+def test_confirming_gives_the_recent_transcript_to_the_reply(services, llm):
+    screening, recruiter, _ = services
+    candidate_id = propose_rejection(screening, "600000001")
+    expected = recent_transcript(recruiter, candidate_id)
+
+    recruiter.confirm_rejection(candidate_id)
+
+    transcript = llm.calls("reply")[-1]["transcript"]
+    assert [(m.role, m.content) for m in transcript] == expected
+
+
+def test_overriding_gives_the_recent_transcript_to_the_reply(services, llm):
+    screening, recruiter, _ = services
+    candidate_id = propose_rejection(screening, "600000001")
+    expected = recent_transcript(recruiter, candidate_id)
+
+    recruiter.override_rejection(candidate_id)
+
+    transcript = llm.calls("reply")[-1]["transcript"]
+    assert [(m.role, m.content) for m in transcript] == expected

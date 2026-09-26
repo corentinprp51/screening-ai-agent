@@ -7,15 +7,17 @@
 - reply / summarize: visible `[fake] …` placeholders; the recap lists every field and the
   summary names the status and the next action.
 - fail_next(call): the next call to that method raises, to exercise the failure path.
+- calls(call): the arguments of each call to that method, for tests to inspect.
 """
 
+from datetime import date
 from typing import Literal
 
 from pydantic import JsonValue, ValidationError
 
 from app.domain.fields import format_value
 from app.domain.flow import Action, Ask, AskCorrection, Close, Confirm, FollowUp, Greet, Recap
-from app.domain.models import CandidateState, Extraction, Language
+from app.domain.models import CandidateState, Extraction, Language, Message
 
 LLMCall = Literal["extract", "reply", "summarize"]
 
@@ -24,6 +26,7 @@ class FakeLLM:
     def __init__(self, script: list[Extraction] | None = None) -> None:
         self._script = list(script or [])
         self._fail: LLMCall | None = None
+        self._log: list[tuple[LLMCall, dict[str, object]]] = []
 
     def queue(self, *extractions: Extraction) -> None:
         self._script.extend(extractions)
@@ -31,12 +34,34 @@ class FakeLLM:
     def fail_next(self, call: LLMCall = "extract") -> None:
         self._fail = call
 
+    def calls(self, call: LLMCall) -> list[dict[str, object]]:
+        return [args for logged, args in self._log if logged == call]
+
     def _maybe_fail(self, call: LLMCall) -> None:
         if self._fail == call:
             self._fail = None
             raise RuntimeError(f"FakeLLM: scripted {call} failure")
 
-    def extract(self, message: str, action: Action, state: CandidateState) -> Extraction:
+    def extract(
+        self,
+        message: str,
+        action: Action,
+        state: CandidateState,
+        today: date,
+        last_agent_message: str | None,
+    ) -> Extraction:
+        self._log.append(
+            (
+                "extract",
+                {
+                    "message": message,
+                    "action": action,
+                    "state": state.model_copy(deep=True),
+                    "today": today,
+                    "last_agent_message": last_agent_message,
+                },
+            )
+        )
         self._maybe_fail("extract")
         if self._script:
             return self._script.pop(0)
@@ -52,7 +77,24 @@ class FakeLLM:
         except ValidationError:
             return Extraction(language="es")
 
-    def reply(self, action: Action, state: CandidateState, language: Language) -> str:
+    def reply(
+        self,
+        action: Action,
+        state: CandidateState,
+        language: Language,
+        transcript: list[Message],
+    ) -> str:
+        self._log.append(
+            (
+                "reply",
+                {
+                    "action": action,
+                    "state": state.model_copy(deep=True),
+                    "language": language,
+                    "transcript": transcript,
+                },
+            )
+        )
         self._maybe_fail("reply")
         match action:
             case Greet():
@@ -80,6 +122,7 @@ class FakeLLM:
         return f"[fake] {label}"
 
     def summarize(self, facts: dict[str, JsonValue], language: Language) -> str:
+        self._log.append(("summarize", {"facts": facts, "language": language}))
         self._maybe_fail("summarize")
         return f"[fake] summary: {facts['status']}; next: {facts['next_action']}"
 

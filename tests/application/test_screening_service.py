@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -907,3 +907,34 @@ def test_a_summary_failure_keeps_the_facts_flags_the_candidate_and_the_turn_comp
     assert (candidate.summary.text, candidate.summary.facts["status"]) == (None, "qualified")
     assert "llm_failure" in candidate.state.flags
     assert repo.list_events(candidate.id)[-1].type == "llm_failure"
+
+
+def test_extract_gets_today_from_the_clock_and_the_question_asked():
+    llm = FakeLLM()
+    service, _ = make_service(llm=llm)
+    service.apply(PHONE)
+    [greeting] = service.transcript(HANDLE)
+
+    service.handle_message(HANDLE, "yes")
+
+    [extract] = llm.calls("extract")
+    assert extract["today"] == date(2026, 9, 26)
+    assert extract["last_agent_message"] == greeting.content
+
+
+def test_reply_gets_the_recent_transcript_with_the_current_message():
+    llm = FakeLLM()
+    service, _ = make_service(llm=llm)
+    service.apply(PHONE)
+
+    answer(service, "yes", "Ana López", "yes", "yes")
+
+    transcript = llm.calls("reply")[-1]["transcript"]
+    assert [(m.role, m.content) for m in transcript] == [
+        ("agent", "[fake] ask:name (attempt 0)"),
+        ("candidate", "Ana López"),
+        ("agent", "[fake] ask:license (attempt 0)"),
+        ("candidate", "yes"),
+        ("agent", "[fake] ask:own_vehicle (attempt 0)"),
+        ("candidate", "yes"),
+    ]

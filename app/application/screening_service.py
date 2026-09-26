@@ -10,7 +10,7 @@ from typing import Literal
 
 from pydantic import JsonValue
 
-from app.application.ports import CandidateRepository, Clock, LLMPort
+from app.application.ports import RECENT_MESSAGES, CandidateRepository, Clock, LLMPort
 from app.domain.fields import (
     INVALID,
     VALIDATORS,
@@ -111,13 +111,21 @@ class ScreeningService:
 
         # Both LLM calls happen before any write, so a failure leaves the state unchanged.
         pending = next_action(candidate.state, self._config)
+        messages = self._repo.list_messages(candidate.id)
+        last_agent_message = next(
+            (m.content for m in reversed(messages) if m.role == "agent"), None
+        )
         events: list[Event] = []
         try:
-            extraction = self._llm.extract(text, pending, candidate.state)
+            extraction = self._llm.extract(
+                text, pending, candidate.state, self._clock.now().date(), last_agent_message
+            )
             candidate.state.language = extraction.language
             self._apply_extraction(candidate, pending, extraction, text, events)
             action = next_action(candidate.state, self._config)
-            reply = self._llm.reply(action, candidate.state, candidate.state.language)
+            # The candidate message is stored after the LLM calls, but the reply follows it.
+            recent = [*messages, self._message(candidate, "candidate", text)][-RECENT_MESSAGES:]
+            reply = self._llm.reply(action, candidate.state, candidate.state.language, recent)
         except Exception as error:
             return self._llm_failure(self._get(handle), text, error)
 
@@ -353,14 +361,16 @@ class ScreeningService:
     def _store(
         self, candidate: Candidate, role: Literal["candidate", "agent"], content: str
     ) -> None:
-        self._repo.add_message(
-            candidate.id,
-            Message(
-                role=role,
-                content=content,
-                language=candidate.state.language,
-                created_at=self._clock.now(),
-            ),
+        self._repo.add_message(candidate.id, self._message(candidate, role, content))
+
+    def _message(
+        self, candidate: Candidate, role: Literal["candidate", "agent"], content: str
+    ) -> Message:
+        return Message(
+            role=role,
+            content=content,
+            language=candidate.state.language,
+            created_at=self._clock.now(),
         )
 
     def _record(self, candidate: Candidate, event_type: str, **payload: JsonValue) -> None:

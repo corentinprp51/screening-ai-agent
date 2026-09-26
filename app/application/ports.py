@@ -1,6 +1,6 @@
 """The three ports. Adapters implement them; the services depend only on them."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Protocol
 
 from pydantic import JsonValue
@@ -16,14 +16,30 @@ from app.domain.models import (
     Status,
 )
 
+# How many of the latest messages `reply` gets to phrase in the flow of the conversation.
+RECENT_MESSAGES = 6
+
 
 class LLMPort(Protocol):
-    def extract(self, message: str, action: Action, state: CandidateState) -> Extraction:
-        """Understand a candidate message answering `action`."""
+    def extract(
+        self,
+        message: str,
+        action: Action,
+        state: CandidateState,
+        today: date,
+        last_agent_message: str | None,
+    ) -> Extraction:
+        """Understand a candidate message answering `action`, asked as `last_agent_message`."""
         ...
 
-    def reply(self, action: Action, state: CandidateState, language: Language) -> str:
-        """Write the message for an action chosen by code."""
+    def reply(
+        self,
+        action: Action,
+        state: CandidateState,
+        language: Language,
+        transcript: list[Message],
+    ) -> str:
+        """Write the message for an action chosen by code, following the recent `transcript`."""
         ...
 
     def summarize(self, facts: dict[str, JsonValue], language: Language) -> str:
