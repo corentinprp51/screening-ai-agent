@@ -1,0 +1,17 @@
+version: "3"
+
+tasks:
+  dev:format:
+    desc: Format code with ruff
+    cmds:
+      - uv run ruff format .
+
+  dev:lint:
+    desc: Lint code with ruff
+    cmds:
+      - uv run ruff check .
+
+  dev:lint:fix:
+    desc: Lint code with ruff and apply safe fixes
+    cmds:
+      - uv run ruff check --fix .

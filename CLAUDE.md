@@ -60,6 +60,7 @@ LLM provider: TBD, set through config, behind `LLMPort`.
 - Agent messages: one question, at most 2 sentences, in the language of the candidate's latest message.
 - Frontend: server-rendered Jinja2 + HTMX, Tailwind via CDN, no Node build step.
 - Git: use always conventional commits
+- Before committing, run `task dev:format` and `task dev:lint`; commit only when both pass (use `task dev:lint:fix` for auto-fixable issues).
 
 ## Build order Suggestion
 
@@ -72,10 +73,9 @@ LLM provider: TBD, set through config, behind `LLMPort`.
 
 ```
 uv sync
-uv run python -m app.cli                  # chat with the agent in the terminal
-uv run uvicorn app.api.main:app --reload
-uv run pytest
-uv run python -m evals.run
+task dev:format                           # ruff format
+task dev:lint                             # ruff check
+task dev:lint:fix                         # ruff check --fix
 ```
 
 ## Coding guidelines
