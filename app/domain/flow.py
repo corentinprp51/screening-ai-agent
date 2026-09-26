@@ -39,11 +39,14 @@ Action = Greet | Ask | FollowUp | Recap | Close
 
 
 def next_action(state: CandidateState, config: ClientConfig) -> Action:
-    """Consent → fields in config order (needs-review fields are skipped) → recap → close."""
+    """Consent → fields in config order (needs-review fields are skipped) → recap → close.
+    An opt-out after consent closes as Withdrawn from any stage."""
     if state.consent is None:
         return Greet()
     if state.consent is False:
         return Close(status=None, reason="consent_declined")
+    if state.opted_out:
+        return Close(status=Status.WITHDRAWN)
     for field_config in config.fields:
         field = state.field(field_config.type)
         if field.status == "empty":

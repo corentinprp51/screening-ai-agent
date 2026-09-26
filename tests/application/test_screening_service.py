@@ -17,11 +17,11 @@ RECAP = (
 )
 
 
-def make_service(script: list[Extraction] | None = None):
+def make_service(script: list[Extraction] | None = None, llm: FakeLLM | None = None):
     repo = SqliteCandidateRepository(create_sqlite_engine("sqlite://"))
     service = ScreeningService(
         config=load_client_config("grupo_sazon"),
-        llm=FakeLLM(script),
+        llm=llm or FakeLLM(script),
         repo=repo,
         clock=FixedClock(datetime(2026, 9, 26, 10, 0, tzinfo=UTC)),
     )
@@ -272,3 +272,93 @@ def test_a_follow_up_answer_with_no_name_accepts_the_first_name_with_a_flag():
         "[fake] ask:availability (attempt 0)"
     )
     assert service.candidate(HANDLE).state.fields["name"].flags == ["surname_missing"]
+
+
+def test_opting_out_after_consent_closes_as_withdrawn():
+    service, repo = make_service(
+        script=[
+            Extraction(yes_no=True),
+            Extraction(name=Extracted(value="Ana López", raw_answer="Ana", confidence=1.0)),
+            Extraction(intent="opt_out"),
+        ]
+    )
+    service.apply(PHONE)
+    answer(service, "sí", "Ana López")
+
+    assert service.handle_message(HANDLE, "ya no me interesa") == "[fake] close:withdrawn"
+
+    candidate = service.candidate(HANDLE)
+    assert candidate.status == Status.WITHDRAWN
+    assert candidate.state.stage == "closed"
+    events = repo.list_events(candidate.id)
+    assert [(e.type, e.stage) for e in events[-2:]] == [
+        ("opted_out", "availability"),
+        ("outcome", "closed"),
+    ]
+
+
+def test_a_message_after_an_outcome_gets_the_fixed_reply_and_a_flag():
+    service, repo = make_service(script=[Extraction(yes_no=True), Extraction(intent="opt_out")])
+    service.apply(PHONE)
+    answer(service, "sí", "stop")
+
+    reply = service.handle_message(HANDLE, "¿al final me llamáis?")
+
+    assert reply == "Gracias por tu mensaje, un reclutador lo revisará."
+    candidate = service.candidate(HANDLE)
+    assert candidate.status == Status.WITHDRAWN
+    assert candidate.state.flags == ["message_after_close"]
+    assert [m.content for m in service.transcript(HANDLE)[-2:]] == ["¿al final me llamáis?", reply]
+    assert repo.list_events(candidate.id)[-1].type == "message_after_close"
+
+
+def test_a_message_after_an_outcome_is_answered_in_the_candidate_language():
+    service, _ = make_service(
+        script=[
+            Extraction(language="en", yes_no=True),
+            Extraction(language="en", intent="opt_out"),
+        ]
+    )
+    service.apply(PHONE)
+    answer(service, "sure", "not interested anymore")
+
+    assert service.handle_message(HANDLE, "hello?") == (
+        "Thanks for your message, a recruiter will review it."
+    )
+
+
+def test_an_extract_failure_sends_the_fallback_and_asks_the_same_question_next():
+    llm = FakeLLM()
+    service, repo = make_service(llm=llm)
+    service.apply(PHONE)
+    service.handle_message(HANDLE, "yes")
+    before = service.candidate(HANDLE).state
+
+    llm.fail_next("extract")
+    reply = service.handle_message(HANDLE, "Ana López")
+
+    assert reply == "Perdona, he tenido un problema técnico. ¿Me lo puedes repetir?"
+    candidate = service.candidate(HANDLE)
+    assert candidate.state.flags == ["llm_failure"]
+    assert candidate.state.model_copy(update={"flags": []}) == before
+    assert [m.content for m in service.transcript(HANDLE)[-2:]] == ["Ana López", reply]
+    assert repo.list_events(candidate.id)[-1].type == "llm_failure"
+    assert service.handle_message(HANDLE, "Ana López") == "[fake] ask:availability (attempt 0)"
+
+
+def test_a_reply_failure_records_nothing_from_the_turn():
+    llm = FakeLLM()
+    service, repo = make_service(llm=llm)
+    service.apply(PHONE)
+    service.handle_message(HANDLE, "yes")
+
+    llm.fail_next("reply")
+    service.handle_message(HANDLE, "Ana López")
+
+    candidate = service.candidate(HANDLE)
+    assert "name" not in candidate.state.fields
+    assert [e.type for e in repo.list_events(candidate.id)] == [
+        "application_received",
+        "consent_given",
+        "llm_failure",
+    ]

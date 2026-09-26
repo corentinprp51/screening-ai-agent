@@ -4,7 +4,10 @@
   into the slot the pending action asks for and lets Pydantic coercion type it
   ("yes" → True). A failed coercion yields an empty extraction, i.e. an invalid answer.
 - reply / summarize: visible `[fake] …` placeholders; the recap lists every field.
+- fail_next(call): the next call to that method raises, to exercise the failure path.
 """
+
+from typing import Literal
 
 from pydantic import JsonValue, ValidationError
 
@@ -12,12 +15,24 @@ from app.domain.fields import format_value
 from app.domain.flow import Action, Ask, Close, FollowUp, Greet, Recap
 from app.domain.models import CandidateState, Extraction, Language
 
+LLMCall = Literal["extract", "reply", "summarize"]
+
 
 class FakeLLM:
     def __init__(self, script: list[Extraction] | None = None) -> None:
         self._script = list(script or [])
+        self._fail: LLMCall | None = None
+
+    def fail_next(self, call: LLMCall = "extract") -> None:
+        self._fail = call
+
+    def _maybe_fail(self, call: LLMCall) -> None:
+        if self._fail == call:
+            self._fail = None
+            raise RuntimeError(f"FakeLLM: scripted {call} failure")
 
     def extract(self, message: str, action: Action, state: CandidateState) -> Extraction:
+        self._maybe_fail("extract")
         if self._script:
             return self._script.pop(0)
         match action:
@@ -33,6 +48,7 @@ class FakeLLM:
             return Extraction(language="es")
 
     def reply(self, action: Action, state: CandidateState, language: Language) -> str:
+        self._maybe_fail("reply")
         match action:
             case Greet():
                 label = "greet"
@@ -49,6 +65,7 @@ class FakeLLM:
         return f"[fake] {label}"
 
     def summarize(self, facts: dict[str, JsonValue], language: Language) -> str:
+        self._maybe_fail("summarize")
         return "[fake] summary"
 
 

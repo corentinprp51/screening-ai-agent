@@ -12,7 +12,7 @@ from pydantic import JsonValue
 from app.application.ports import CandidateRepository, Clock, LLMPort
 from app.domain.fields import INVALID, VALIDATORS, update_field
 from app.domain.flow import Action, Ask, Close, FollowUp, Greet, Recap, next_action, stage_of
-from app.domain.models import Candidate, ClientConfig, Event, Extraction, Message
+from app.domain.models import Candidate, ClientConfig, Event, Extraction, Message, Status
 
 
 class UnknownCandidate(LookupError):
@@ -57,22 +57,32 @@ class ScreeningService:
         return candidate
 
     def handle_message(self, handle: str, text: str) -> str:
-        """Run one turn and return the agent's reply."""
+        """Run one turn and return the agent's reply. Never raises, except for an
+        unknown candidate."""
         candidate = self._get(handle)
-        pending = next_action(candidate.state, self._config)
-        extraction = self._llm.extract(text, pending, candidate.state)
-        candidate.state.language = extraction.language
-        self._store(candidate, "candidate", text)
+        if candidate.status != Status.IN_PROGRESS:
+            return self._after_close(candidate, text)
 
-        self._apply_extraction(candidate, pending, extraction, text)
-        action = next_action(candidate.state, self._config)
-        reply = self._llm.reply(action, candidate.state, candidate.state.language)
+        # Both LLM calls happen before any write, so a failure leaves the state unchanged.
+        pending = next_action(candidate.state, self._config)
+        events: list[Event] = []
+        try:
+            extraction = self._llm.extract(text, pending, candidate.state)
+            candidate.state.language = extraction.language
+            self._apply_extraction(candidate, pending, extraction, text, events)
+            action = next_action(candidate.state, self._config)
+            reply = self._llm.reply(action, candidate.state, candidate.state.language)
+        except Exception as error:
+            return self._llm_failure(self._get(handle), text, error)
 
         if isinstance(action, Close) and action.status is None:
             # Consent declined: nothing about the candidate is kept, not even this reply.
             self._repo.delete(candidate.id)
             return reply
 
+        self._store(candidate, "candidate", text)
+        for event in events:
+            self._repo.add_event(candidate.id, event)
         candidate.state.stage = stage_of(action)
         if isinstance(action, Close) and action.status and candidate.status != action.status:
             candidate.status = action.status
@@ -89,20 +99,56 @@ class ScreeningService:
         candidate = self.candidate(handle)
         return self._repo.list_messages(candidate.id) if candidate else []
 
+    def _after_close(self, candidate: Candidate, text: str) -> str:
+        """The screening has stopped: store the message, flag it for the recruiter and
+        answer with a fixed template. The screening is not reopened."""
+        reply = self._config.templates.after_close[candidate.state.language]
+        self._store(candidate, "candidate", text)
+        candidate.state.add_flag("message_after_close")
+        self._record(candidate, "message_after_close")
+        candidate.updated_at = self._clock.now()
+        self._repo.save(candidate)
+        self._send(candidate, reply)
+        return reply
+
+    def _llm_failure(self, candidate: Candidate, text: str, error: Exception) -> str:
+        """An LLM call failed: keep the message, flag the candidate and send the fallback.
+        The state is unchanged, so the next message gets the same question."""
+        reply = self._config.templates.fallback[candidate.state.language]
+        self._store(candidate, "candidate", text)
+        candidate.state.add_flag("llm_failure")
+        self._record(candidate, "llm_failure", error=repr(error))
+        candidate.updated_at = self._clock.now()
+        self._repo.save(candidate)
+        self._send(candidate, reply)
+        return reply
+
     def _apply_extraction(
-        self, candidate: Candidate, pending: Action, extraction: Extraction, text: str
+        self,
+        candidate: Candidate,
+        pending: Action,
+        extraction: Extraction,
+        text: str,
+        events: list[Event],
     ) -> None:
-        """Validate what was extracted for the pending action and update the state."""
+        """Validate what was extracted for the pending action and update the state.
+        Events are collected in `events`, written only once the turn succeeds."""
         state = candidate.state
+        if extraction.intent == "opt_out" and not isinstance(pending, Greet):
+            state.opted_out = True
+            events.append(self._event(candidate, "opted_out"))
+            return
         match pending:
             case Greet():
                 if extraction.yes_no is not None:
                     state.consent = extraction.yes_no
                 if state.consent:
-                    self._record(candidate, "consent_given")
+                    events.append(self._event(candidate, "consent_given"))
             case Ask() | FollowUp():
                 for field_config in self._config.fields:
-                    self._apply_field(candidate, field_config.type, extraction, pending, text)
+                    self._apply_field(
+                        candidate, field_config.type, extraction, pending, text, events
+                    )
             case Recap():
                 state.recap_confirmed = extraction.yes_no is True
 
@@ -113,6 +159,7 @@ class ScreeningService:
         extraction: Extraction,
         pending: Action,
         text: str,
+        events: list[Event],
     ) -> None:
         """Validate one field. Attempts are only used by the question asked: an invalid
         answer volunteered for another field is ignored."""
@@ -134,9 +181,9 @@ class ScreeningService:
         if updated.status == "valid":
             if field_type == "name":
                 candidate.name = updated.value
-            self._record(candidate, "field_captured", field=field_type)
+            events.append(self._event(candidate, "field_captured", field=field_type))
         elif updated.status == "needs_review":
-            self._record(candidate, "field_needs_review", field=field_type)
+            events.append(self._event(candidate, "field_needs_review", field=field_type))
 
     def _get(self, handle: str) -> Candidate:
         candidate = self.candidate(handle)
@@ -161,12 +208,12 @@ class ScreeningService:
         )
 
     def _record(self, candidate: Candidate, event_type: str, **payload: JsonValue) -> None:
-        self._repo.add_event(
-            candidate.id,
-            Event(
-                type=event_type,
-                stage=candidate.state.stage,
-                payload=payload,
-                created_at=self._clock.now(),
-            ),
+        self._repo.add_event(candidate.id, self._event(candidate, event_type, **payload))
+
+    def _event(self, candidate: Candidate, event_type: str, **payload: JsonValue) -> Event:
+        return Event(
+            type=event_type,
+            stage=candidate.state.stage,
+            payload=payload,
+            created_at=self._clock.now(),
         )

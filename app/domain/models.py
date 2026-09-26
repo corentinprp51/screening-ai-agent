@@ -52,6 +52,8 @@ class FieldConfig(BaseModel):
 
 class Templates(BaseModel):
     greeting: dict[Language, str]
+    fallback: dict[Language, str]
+    after_close: dict[Language, str]
 
 
 class ClientConfig(BaseModel):
@@ -88,16 +90,22 @@ class FieldState(BaseModel):
 
 class CandidateState(BaseModel):
     consent: bool | None = None
+    opted_out: bool = False
     fields: dict[str, FieldState] = Field(default_factory=dict)
     recap_confirmed: bool = False
     language: Language = "es"
     stage: str = "consent"
+    flags: list[str] = Field(default_factory=list)  # on the candidate, not a field
 
     def field(self, field_type: str) -> FieldState:
         return self.fields.get(field_type, FieldState())
 
+    def add_flag(self, flag: str) -> None:
+        if flag not in self.flags:
+            self.flags.append(flag)
+
     def all_flags(self) -> list[str]:
-        return [flag for field in self.fields.values() for flag in field.flags]
+        return self.flags + [flag for field in self.fields.values() for flag in field.flags]
 
 
 class Candidate(BaseModel):

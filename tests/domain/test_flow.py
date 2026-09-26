@@ -16,7 +16,11 @@ CONFIG = ClientConfig(
     persona=Persona(agent_name="Lucía", client_name="Test"),
     default_language="es",
     fields=[FieldConfig(type="name"), FieldConfig(type="schedule")],
-    templates=Templates(greeting={"es": "hola", "en": "hi"}),
+    templates=Templates(
+        greeting={"es": "hola", "en": "hi"},
+        fallback={"es": "perdona", "en": "sorry"},
+        after_close={"es": "gracias", "en": "thanks"},
+    ),
 )
 VALID_NAME = FieldState(status="valid", value="Ana López")
 VALID_SCHEDULE = FieldState(status="valid", value="evening")
@@ -69,6 +73,19 @@ RECAP = Recap(fields=("name", "schedule"))
                 recap_confirmed=True,
             ),
             Close(status=Status.QUALIFIED_TO_REVIEW),
+        ),
+        (
+            CandidateState(consent=True, opted_out=True, fields={"name": VALID_NAME}),
+            Close(status=Status.WITHDRAWN),
+        ),
+        (
+            CandidateState(
+                consent=True,
+                opted_out=True,
+                fields={"name": VALID_NAME, "schedule": VALID_SCHEDULE},
+                recap_confirmed=True,
+            ),
+            Close(status=Status.WITHDRAWN),
         ),
     ],
 )
