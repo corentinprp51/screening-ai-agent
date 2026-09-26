@@ -34,6 +34,7 @@ A turn: LLM extraction → validation in code → state update → `next_action(
 ## Key design decisions
 
 - **The next action is derived from field state, not stored as a stage pointer** ([ADR 0001](docs/adr/0001-derive-next-action-from-field-state.md)). `next_action(state, config)` is a pure function: consent, then the configured fields in order, then the recap, then the outcome. The stage is computed from it and written to the candidate row for the dashboard.
+- **The LLM port stays synchronous** ([ADR 0002](docs/adr/0002-keep-the-llm-port-synchronous.md)). The PydanticAI adapter calls `run_sync` with a fresh OpenAI client per call; messages go out whole and guardrails check the full reply, so there is nothing to stream. Async end to end is the path when volume grows.
 - **The FakeLLM is a dumb echo.** It puts the raw message into the slot the pending action asks for and lets Pydantic coercion type it (`"yes"` → `True`); a failed coercion is an invalid answer. Replies are visible `[fake] …` placeholders. Tests can queue scripted extractions instead. No keywords or NLU, so the whole flow is exercised offline and v1 only swaps in a real adapter behind `LLMPort`.
 - **Consent declined is a hard delete.** The candidate, its messages and its events are deleted; the closing message is returned to the chat but not stored. It is not an outcome.
 - **A missing part gets one follow-up, then is accepted with a flag.** For the name, an answer to the surname follow-up that does not repeat the first name is taken as the surname(s) (`Ana` + `López García`).
