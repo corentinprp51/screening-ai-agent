@@ -40,6 +40,9 @@ service_areas:
     Guadalajara: [Centro, Zapopan, Tlaquepaque]
     Monterrey: [San Nicolás, Guadalupe]
 
+# Known delivery platforms: an experience platform is mapped to one of them, anything else to "other".
+platforms: [Glovo, Uber Eats, Just Eat, Rappi, Didi Food]
+
 # The priority score (0-100) ranks the queue. Weights: the most points per field, adding up to 100.
 scoring:
   weights:
