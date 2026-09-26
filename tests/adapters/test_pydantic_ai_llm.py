@@ -196,7 +196,7 @@ def test_reply_writes_the_text_following_the_transcript():
     ("action", "expected"),
     [
         (Greet(), "go on with the screening"),
-        (Ask("start_date", attempt=1), "give an example"),
+        (Ask("start_date", attempt=1), "worded differently"),
         (FollowUp("name", missing="surname"), "surname"),
         (Confirm("service_area"), "Getafe"),
         (Recap(fields=("name", "service_area", "schedule")), "- schedule: —"),
@@ -226,6 +226,75 @@ def test_the_reply_prompt_describes_every_action(action, expected):
     adapter(model).reply(action, state, "es", [])
 
     assert expected in model.prompt()
+
+
+ASK = Ask("schedule", attempt=0)
+GOOD_REPLY = "Genial, Ana. ¿Qué turno prefieres: mañana, tarde o noche?"
+
+
+def retry_reason(model: ScriptedModel) -> str:
+    messages, _ = model.requests[1]
+    [retry] = [p for p in messages[-1].parts if isinstance(p, RetryPromptPart)]
+    return retry.model_response()
+
+
+@pytest.mark.parametrize(
+    ("bad_reply", "reason"),
+    [
+        ("Genial. " + "a" * 300 + " ¿Qué turno prefieres?", "at most 300 characters"),
+        ("Genial, Ana. Vamos bien. ¿Qué turno prefieres?", "at most 2 sentences"),
+        ("¿Qué turno prefieres? ¿Y qué días?", "exactly one question"),
+        ("Genial, Ana 🙌 ¿Qué turno prefieres?", "no emoji"),
+    ],
+)
+def test_a_reply_breaking_a_message_rule_is_retried_once_with_the_reason(bad_reply, reason):
+    model = ScriptedModel(bad_reply, GOOD_REPLY)
+
+    reply = adapter(model).reply(ASK, CandidateState(), "es", [])
+
+    assert reply == GOOD_REPLY
+    assert len(model.requests) == 2
+    assert reason in retry_reason(model)
+
+
+def test_a_second_reply_breaking_a_rule_reaches_the_service_which_sends_the_fallback():
+    model = ScriptedModel({"language": "es", "yes_no": True}, "¿Nombre? ¿Y apellido?", "¿Y? ¿Qué?")
+    service = ScreeningService(
+        config=CONFIG,
+        llm=adapter(model),
+        repo=SqliteCandidateRepository(create_sqlite_engine("sqlite://")),
+        clock=FixedClock(NOW),
+    )
+    service.apply("600000001")
+
+    reply = service.handle_message("600000001", "sí")
+
+    assert reply == CONFIG.templates.fallback["es"]
+    assert service.candidate("600000001").state.flags == ["llm_failure"]
+    assert len(model.requests) == 3  # the extraction, the reply and its one retry
+
+
+def test_a_long_recap_listing_every_field_passes():
+    recap = "Esto es lo que tengo:\n" + "\n".join(
+        f"- campo {i}: valor largo {i}." for i in range(12)
+    )
+    recap += "\n¿Está todo correcto?"
+    model = ScriptedModel(recap)
+
+    reply = adapter(model).reply(Recap(fields=("name",)), CandidateState(), "es", [])
+
+    assert reply == recap
+    assert len(model.requests) == 1
+
+
+def test_an_emoji_in_a_closing_message_passes():
+    closing = "¡Listo, Ana! Un reclutador te llamará en las próximas 48 h 🙌"
+    model = ScriptedModel(closing)
+
+    reply = adapter(model).reply(Close(status=Status.QUALIFIED), CandidateState(), "es", [])
+
+    assert reply == closing
+    assert len(model.requests) == 1
 
 
 def test_summarize_writes_the_text_from_the_facts():

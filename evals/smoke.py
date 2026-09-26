@@ -2,7 +2,8 @@
 in `.env`. Scripted candidate messages go through the ScreeningService on an in-memory
 database; each extraction, reply and token usage is printed. Not part of `task dev:test`:
 it calls the API and its output varies. Read it by hand: colloquial years, platforms, a
-relative date, a language switch and a bare number keeping the language."""
+relative date, a language switch, a bare number keeping the language, and replies that
+ask, re-ask, recap and close within the message rules."""
 
 import logging
 import os
@@ -17,13 +18,15 @@ from app.application.screening_service import ScreeningService
 
 # Each conversation is a phone number and the candidate's messages.
 CONVERSATIONS = {
-    # Colloquial answers: a moped license, a couple of years, platforms, a relative date.
+    # Colloquial answers (a moped license, a couple of years, platforms, a relative date)
+    # and an unusable answer that gets a reworded re-ask.
     "600000001": [
         "hola! sí, adelante",
         "Me llamo Ana López",
         "sí, de moto",
         "sí, tengo una moto mía",
         "vivo en Getafe",
+        "no sé",
         "busco jornada completa, mejor por la noche",
         "un par de años en Glovo y Uber Eats",
         "puedo empezar el lunes",
