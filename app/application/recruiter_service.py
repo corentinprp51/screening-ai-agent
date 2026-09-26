@@ -5,7 +5,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, JsonValue
 
-from app.application.ports import CandidateRepository, Clock, LLMPort
+from app.application.ports import RECENT_MESSAGES, CandidateRepository, Clock, LLMPort
 from app.application.screening_service import UnknownCandidate, write_summary
 from app.domain.fields import KNOCK_OUTS, format_value
 from app.domain.flow import Action, Close, next_action, stage_of
@@ -222,8 +222,9 @@ class RecruiterService:
     def _reply(self, candidate: Candidate, action: Action) -> str:
         """The LLM message for the action. On failure the candidate is flagged, nothing
         else changes and the recruiter can try again."""
+        recent = self._repo.list_messages(candidate.id)[-RECENT_MESSAGES:]
         try:
-            return self._llm.reply(action, candidate.state, candidate.state.language)
+            return self._llm.reply(action, candidate.state, candidate.state.language, recent)
         except Exception as error:
             stored = self._get(candidate.id)  # drop the in-memory changes
             stored.state.add_flag("llm_failure")
