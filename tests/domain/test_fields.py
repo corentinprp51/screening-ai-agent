@@ -167,8 +167,9 @@ def test_the_license_type_given_with_an_expired_answer_is_kept_after_the_follow_
         value=License(has_license="expired", type="moped_motorcycle"),
         missing="validity",
     )
-    verdict = validate_license(License(has_license="expired"), current, TODAY)
-    assert verdict.value == License(has_license="expired", type="moped_motorcycle")
+    for follow_up in (True, "expired"):
+        verdict = validate_license(License(has_license=follow_up), current, TODAY)
+        assert verdict.value == License(has_license=follow_up, type="moped_motorcycle")
 
 
 def test_a_license_still_not_valid_after_the_follow_up_fails_the_knock_out():

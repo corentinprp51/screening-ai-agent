@@ -521,19 +521,24 @@ def test_an_expired_license_gets_one_follow_up_then_proposes_a_rejection():
 
 
 def test_an_unclear_answer_to_the_license_follow_up_is_treated_as_no():
-    service, _ = make_service()
+    service, repo = make_service()
     service.apply(PHONE)
     answer(service, "yes", "Ana López", "pending")
 
     assert service.handle_message(HANDLE, "no sé") == (
         "[fake] close:no_license (reply within 24 h)"
     )
+    events = repo.list_events(service.candidate(HANDLE).id)
+    assert [e.payload for e in events if e.type == "rejection_proposed"] == [
+        {"rule": "no_license", "answer": "pending"}
+    ]
 
 
-def test_a_license_confirmed_valid_after_the_follow_up_continues():
+@pytest.mark.parametrize("first_answer", ["expired", "pending"])
+def test_a_license_confirmed_valid_after_the_follow_up_continues(first_answer):
     service, _ = make_service()
     service.apply(PHONE)
-    answer(service, "yes", "Ana López", "expired")
+    answer(service, "yes", "Ana López", first_answer)
 
     assert service.handle_message(HANDLE, "yes") == "[fake] ask:own_vehicle (attempt 0)"
 
