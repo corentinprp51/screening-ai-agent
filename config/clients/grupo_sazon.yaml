@@ -4,13 +4,20 @@ persona:
 
 default_language: es
 
-# Asked in this order after consent.
+# Asked in this order after consent. A knock-out field proposes a rejection on a "no".
 fields:
   - type: name
+  - type: license
+    knock_out: true
+  - type: own_vehicle
+    knock_out: true
   - type: availability
   - type: schedule
   - type: experience
   - type: start_date
+
+# A recruiter replies to a proposed rejection within this delay.
+review_delay_hours: 24
 
 templates:
   greeting:

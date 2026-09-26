@@ -7,13 +7,13 @@ from app.adapters.config.yaml_loader import load_client_config
 from app.adapters.llm.fake_llm import FakeLLM
 from app.adapters.persistence.sqlite_repo import SqliteCandidateRepository, create_sqlite_engine
 from app.application.screening_service import ScreeningService
-from app.domain.models import Experience, Extracted, Extraction, Status
+from app.domain.models import Experience, Extracted, Extraction, License, OwnVehicle, Status
 
 PHONE = "+34 600 111 222"
 HANDLE = "34600111222"
 RECAP = (
-    "[fake] recap: name=Ana López; availability=full_time; schedule=evening; "
-    "experience=2 years; start_date=immediate"
+    "[fake] recap: name=Ana López; license=yes; own_vehicle=yes; availability=full_time; "
+    "schedule=evening; experience=2 years; start_date=immediate"
 )
 
 
@@ -52,7 +52,9 @@ def test_happy_path_asks_every_field_in_order_and_ends_qualified():
     service.apply(PHONE)
 
     assert service.handle_message(HANDLE, "yes") == "[fake] ask:name (attempt 0)"
-    assert service.handle_message(HANDLE, "Ana López") == "[fake] ask:availability (attempt 0)"
+    assert service.handle_message(HANDLE, "Ana López") == "[fake] ask:license (attempt 0)"
+    assert service.handle_message(HANDLE, "yes") == "[fake] ask:own_vehicle (attempt 0)"
+    assert service.handle_message(HANDLE, "yes") == "[fake] ask:availability (attempt 0)"
     assert service.handle_message(HANDLE, "full_time") == "[fake] ask:schedule (attempt 0)"
     assert service.handle_message(HANDLE, "evening") == "[fake] ask:experience (attempt 0)"
     assert service.handle_message(HANDLE, "2") == "[fake] ask:start_date (attempt 0)"
@@ -63,11 +65,11 @@ def test_happy_path_asks_every_field_in_order_and_ends_qualified():
     assert candidate.status == Status.QUALIFIED
     assert candidate.name == "Ana López"
     assert candidate.state.stage == "closed"
-    assert len(service.transcript(HANDLE)) == 15
+    assert len(service.transcript(HANDLE)) == 19
     assert [e.type for e in repo.list_events(candidate.id)] == [
         "application_received",
         "consent_given",
-        *["field_captured"] * 5,
+        *["field_captured"] * 7,
         "outcome",
     ]
 
@@ -75,7 +77,7 @@ def test_happy_path_asks_every_field_in_order_and_ends_qualified():
 def test_three_invalid_answers_mark_the_field_needs_review_and_end_qualified_to_review():
     service, repo = make_service()
     service.apply(PHONE)
-    answer(service, "yes", "Ana López", "full_time")
+    answer(service, "yes", "Ana López", "yes", "yes", "full_time")
 
     assert service.handle_message(HANDLE, "de noche") == "[fake] ask:schedule (attempt 1)"
     assert service.handle_message(HANDLE, "cuando sea") == "[fake] ask:schedule (attempt 2)"
@@ -95,7 +97,7 @@ def test_three_invalid_answers_mark_the_field_needs_review_and_end_qualified_to_
 def test_an_invalid_answer_clears_the_value_and_uses_an_attempt():
     service, _ = make_service()
     service.apply(PHONE)
-    answer(service, "yes", "Ana López")
+    answer(service, "yes", "Ana López", "yes", "yes")
 
     assert service.handle_message(HANDLE, "full_time part_time") == (
         "[fake] ask:availability (attempt 1)"
@@ -110,6 +112,14 @@ def test_volunteered_answers_are_kept_and_not_asked_again():
             Extraction(yes_no=True),
             Extraction(
                 name=Extracted(value="Ana López", raw_answer="Ana López", confidence=1.0),
+                license=Extracted(
+                    value=License(has_license=True, type="car"),
+                    raw_answer="carnet de coche",
+                    confidence=1.0,
+                ),
+                own_vehicle=Extracted(
+                    value=OwnVehicle(owns_vehicle=True), raw_answer="coche propio", confidence=1.0
+                ),
                 schedule=Extracted(value="evening", raw_answer="por la tarde", confidence=1.0),
                 experience=Extracted(
                     value=Experience(years=3, platforms=["Glovo"]),
@@ -122,7 +132,9 @@ def test_volunteered_answers_are_kept_and_not_asked_again():
     service.apply(PHONE)
     service.handle_message(HANDLE, "sí")
 
-    reply = service.handle_message(HANDLE, "Ana López, por la tarde, 3 años en Glovo")
+    reply = service.handle_message(
+        HANDLE, "Ana López, carnet de coche y coche propio, por la tarde, 3 años en Glovo"
+    )
 
     assert reply == "[fake] ask:availability (attempt 0)"
     assert answer(service, "weekends") == "[fake] ask:start_date (attempt 0)"
@@ -136,6 +148,10 @@ def test_an_invalid_volunteered_answer_is_ignored():
             Extraction(yes_no=True),
             Extraction(
                 name=Extracted(value="Ana López", raw_answer="Ana López", confidence=1.0),
+                license=Extracted(value=License(has_license=True), raw_answer="sí", confidence=1.0),
+                own_vehicle=Extracted(
+                    value=OwnVehicle(owns_vehicle=True), raw_answer="sí", confidence=1.0
+                ),
                 availability=Extracted(
                     value=["full_time", "part_time"], raw_answer="both", confidence=1.0
                 ),
@@ -145,7 +161,7 @@ def test_an_invalid_volunteered_answer_is_ignored():
     service.apply(PHONE)
     service.handle_message(HANDLE, "sí")
 
-    assert service.handle_message(HANDLE, "Ana López, both") == (
+    assert service.handle_message(HANDLE, "Ana López, sí, sí, both") == (
         "[fake] ask:availability (attempt 0)"
     )
 
@@ -153,7 +169,7 @@ def test_an_invalid_volunteered_answer_is_ignored():
 def test_a_start_date_beyond_90_days_is_kept_with_a_flag_that_does_not_change_the_outcome():
     service, _ = make_service()
     service.apply(PHONE)
-    answer(service, "yes", "Ana López", "full_time", "evening", "2")
+    answer(service, "yes", "Ana López", "yes", "yes", "full_time", "evening", "2")
 
     assert service.handle_message(HANDLE, "2027-01-15").startswith("[fake] recap")
     assert service.handle_message(HANDLE, "yes") == "[fake] close:qualified"
@@ -167,7 +183,7 @@ def test_a_start_date_beyond_90_days_is_kept_with_a_flag_that_does_not_change_th
 def test_a_past_start_date_is_asked_again():
     service, _ = make_service()
     service.apply(PHONE)
-    answer(service, "yes", "Ana López", "full_time", "evening", "2")
+    answer(service, "yes", "Ana López", "yes", "yes", "full_time", "evening", "2")
 
     assert service.handle_message(HANDLE, "2026-09-25") == "[fake] ask:start_date (attempt 1)"
 
@@ -193,7 +209,7 @@ def test_applying_again_with_the_same_handle_resumes_the_screening():
 
     assert again.id == first.id
     assert len(service.transcript(HANDLE)) == 3
-    assert service.handle_message(HANDLE, "Ana López") == "[fake] ask:availability (attempt 0)"
+    assert service.handle_message(HANDLE, "Ana López") == "[fake] ask:license (attempt 0)"
 
 
 def test_first_name_only_gets_one_surname_follow_up():
@@ -202,7 +218,7 @@ def test_first_name_only_gets_one_surname_follow_up():
     service.handle_message(HANDLE, "yes")
 
     assert service.handle_message(HANDLE, "Ana") == "[fake] follow_up:name (surname)"
-    assert service.handle_message(HANDLE, "López") == "[fake] ask:availability (attempt 0)"
+    assert service.handle_message(HANDLE, "López") == "[fake] ask:license (attempt 0)"
     assert service.candidate(HANDLE).name == "Ana López"
 
 
@@ -212,9 +228,7 @@ def test_missing_surname_after_the_follow_up_is_accepted_with_a_flag():
     service.handle_message(HANDLE, "yes")
     service.handle_message(HANDLE, "Ana")
 
-    assert service.handle_message(HANDLE, "prefiero no, 123") == (
-        "[fake] ask:availability (attempt 0)"
-    )
+    assert service.handle_message(HANDLE, "prefiero no, 123") == "[fake] ask:license (attempt 0)"
 
     name = service.candidate(HANDLE).state.fields["name"]
     assert name.value == "Ana"
@@ -245,7 +259,7 @@ def test_extraction_fills_the_field_and_the_reply_follows_its_language():
 
     candidate = service.candidate(HANDLE)
     assert candidate.state.fields["name"].raw_answer == "I'm Ana López"
-    assert candidate.state.stage == "availability"
+    assert candidate.state.stage == "license"
     assert service.transcript(HANDLE)[-1].language == "en"
 
 
@@ -269,7 +283,7 @@ def test_a_follow_up_answer_with_no_name_accepts_the_first_name_with_a_flag():
     service.handle_message(HANDLE, "Ana")
 
     assert service.handle_message(HANDLE, "prefiero no decirlo") == (
-        "[fake] ask:availability (attempt 0)"
+        "[fake] ask:license (attempt 0)"
     )
     assert service.candidate(HANDLE).state.fields["name"].flags == ["surname_missing"]
 
@@ -292,7 +306,7 @@ def test_opting_out_after_consent_closes_as_withdrawn():
     assert candidate.state.stage == "closed"
     events = repo.list_events(candidate.id)
     assert [(e.type, e.stage) for e in events[-2:]] == [
-        ("opted_out", "availability"),
+        ("opted_out", "license"),
         ("outcome", "closed"),
     ]
 
@@ -343,7 +357,7 @@ def test_an_extract_failure_sends_the_fallback_and_asks_the_same_question_next()
     assert candidate.state.model_copy(update={"flags": []}) == before
     assert [m.content for m in service.transcript(HANDLE)[-2:]] == ["Ana López", reply]
     assert repo.list_events(candidate.id)[-1].type == "llm_failure"
-    assert service.handle_message(HANDLE, "Ana López") == "[fake] ask:availability (attempt 0)"
+    assert service.handle_message(HANDLE, "Ana López") == "[fake] ask:license (attempt 0)"
 
 
 def test_a_reply_failure_records_nothing_from_the_turn():
@@ -362,3 +376,128 @@ def test_a_reply_failure_records_nothing_from_the_turn():
         "consent_given",
         "llm_failure",
     ]
+
+
+def test_no_license_stops_the_questions_and_proposes_a_rejection():
+    service, repo = make_service()
+    service.apply(PHONE)
+    answer(service, "yes", "Ana López")
+
+    assert service.handle_message(HANDLE, "no") == "[fake] close:no_license (reply within 24 h)"
+
+    candidate = service.candidate(HANDLE)
+    assert candidate.status == Status.REJECTION_PROPOSED
+    assert candidate.state.stage == "closed"
+    [event] = [e for e in repo.list_events(candidate.id) if e.type == "rejection_proposed"]
+    assert event.payload == {"rule": "no_license", "answer": "no"}
+    assert "outcome" not in [e.type for e in repo.list_events(candidate.id)]
+    # No further question while the rejection is proposed.
+    assert service.handle_message(HANDLE, "full_time") == (
+        "Gracias por tu mensaje, un reclutador lo revisará."
+    )
+
+
+def test_no_own_vehicle_proposes_a_rejection():
+    service, repo = make_service()
+    service.apply(PHONE)
+    answer(service, "yes", "Ana López", "yes")
+
+    assert service.handle_message(HANDLE, "no") == (
+        "[fake] close:no_own_vehicle (reply within 24 h)"
+    )
+
+    candidate = service.candidate(HANDLE)
+    assert candidate.status == Status.REJECTION_PROPOSED
+    events = repo.list_events(candidate.id)
+    assert [e.payload for e in events if e.type == "rejection_proposed"] == [
+        {"rule": "no_own_vehicle", "answer": "no"}
+    ]
+
+
+def test_a_volunteered_no_license_proposes_a_rejection_right_away():
+    service, _ = make_service(
+        script=[
+            Extraction(yes_no=True),
+            Extraction(
+                name=Extracted(value="Ana López", raw_answer="Ana López", confidence=1.0),
+                license=Extracted(
+                    value=License(has_license=False), raw_answer="sin carnet", confidence=1.0
+                ),
+            ),
+        ]
+    )
+    service.apply(PHONE)
+    service.handle_message(HANDLE, "sí")
+
+    assert service.handle_message(HANDLE, "Ana López, sin carnet") == (
+        "[fake] close:no_license (reply within 24 h)"
+    )
+
+
+def test_the_license_type_is_kept_when_given():
+    service, _ = make_service(
+        script=[
+            Extraction(yes_no=True),
+            Extraction(name=Extracted(value="Ana López", raw_answer="Ana López", confidence=1.0)),
+            Extraction(
+                license=Extracted(
+                    value=License(has_license=True, type="moped_motorcycle"),
+                    raw_answer="sí, de moto",
+                    confidence=1.0,
+                )
+            ),
+        ]
+    )
+    service.apply(PHONE)
+    answer(service, "sí", "Ana López")
+
+    assert service.handle_message(HANDLE, "sí, de moto") == "[fake] ask:own_vehicle (attempt 0)"
+    license = service.candidate(HANDLE).state.fields["license"]
+    assert license.value == License(has_license=True, type="moped_motorcycle")
+
+
+def test_an_unparseable_license_goes_to_needs_review_not_to_a_rejection():
+    service, repo = make_service()
+    service.apply(PHONE)
+    answer(service, "yes", "Ana López")
+
+    assert service.handle_message(HANDLE, "bueno...") == "[fake] ask:license (attempt 1)"
+    assert service.handle_message(HANDLE, "depende") == "[fake] ask:license (attempt 2)"
+    assert service.handle_message(HANDLE, "ni idea") == "[fake] ask:own_vehicle (attempt 0)"
+
+    candidate = service.candidate(HANDLE)
+    assert candidate.status == Status.IN_PROGRESS
+    assert candidate.state.fields["license"].status == "needs_review"
+    assert "rejection_proposed" not in [e.type for e in repo.list_events(candidate.id)]
+
+
+def test_a_shared_vehicle_gets_one_follow_up_then_needs_review_and_the_screening_continues():
+    service, repo = make_service()
+    service.apply(PHONE)
+    answer(service, "yes", "Ana López", "yes")
+
+    assert service.handle_message(HANDLE, "shared") == "[fake] follow_up:own_vehicle (access)"
+    assert service.handle_message(HANDLE, "shared") == "[fake] ask:availability (attempt 0)"
+    answer(service, "full_time", "evening", "2", "immediate")
+    assert service.handle_message(HANDLE, "yes") == "[fake] close:qualified_to_review"
+
+    candidate = service.candidate(HANDLE)
+    own_vehicle = candidate.state.fields["own_vehicle"]
+    assert (own_vehicle.status, own_vehicle.value) == (
+        "needs_review",
+        OwnVehicle(owns_vehicle="shared"),
+    )
+    events = repo.list_events(candidate.id)
+    assert [e.payload for e in events if e.type == "field_needs_review"] == [
+        {"field": "own_vehicle"}
+    ]
+
+
+def test_a_clear_answer_to_the_shared_vehicle_follow_up_settles_the_field():
+    service, _ = make_service()
+    service.apply(PHONE)
+    answer(service, "yes", "Ana López", "yes", "shared")
+
+    assert service.handle_message(HANDLE, "no") == (
+        "[fake] close:no_own_vehicle (reply within 24 h)"
+    )

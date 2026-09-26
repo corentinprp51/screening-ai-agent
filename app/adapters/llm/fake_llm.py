@@ -60,8 +60,10 @@ class FakeLLM:
                 label = "recap: " + "; ".join(
                     f"{field}={_recap_value(state, field)}" for field in fields
                 )
-            case Close(status=status, reason=reason):
+            case Close(status=status, reason=reason, within_hours=within_hours):
                 label = f"close:{reason or status}"
+                if within_hours:
+                    label += f" (reply within {within_hours} h)"
         return f"[fake] {label}"
 
     def summarize(self, facts: dict[str, JsonValue], language: Language) -> str:

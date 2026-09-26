@@ -86,7 +86,11 @@ class ScreeningService:
         candidate.state.stage = stage_of(action)
         if isinstance(action, Close) and action.status and candidate.status != action.status:
             candidate.status = action.status
-            self._record(candidate, "outcome", status=action.status)
+            if action.status == Status.REJECTION_PROPOSED:
+                answer = candidate.state.field(action.field).raw_answer
+                self._record(candidate, "rejection_proposed", rule=action.reason, answer=answer)
+            else:
+                self._record(candidate, "outcome", status=action.status)
         candidate.updated_at = self._clock.now()
         self._repo.save(candidate)
         self._send(candidate, reply)

@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+from app.domain.fields import KNOCK_OUTS
 from app.domain.models import CandidateState, ClientConfig, Status
 
 
@@ -31,22 +32,39 @@ class Recap:
 
 @dataclass(frozen=True)
 class Close:
+    """For a proposed rejection, `reason` is the failed rule, `field` the field that failed
+    it and `within_hours` the delay in which a recruiter replies."""
+
     status: Status | None
     reason: str | None = None
+    field: str | None = None
+    within_hours: int | None = None
 
 
 Action = Greet | Ask | FollowUp | Recap | Close
 
 
 def next_action(state: CandidateState, config: ClientConfig) -> Action:
-    """Consent → fields in config order (needs-review fields are skipped) → recap → close.
-    An opt-out after consent closes as Withdrawn from any stage."""
+    """Consent → knock-outs → fields in config order (needs-review fields are skipped)
+    → recap → close. An opt-out after consent closes as Withdrawn from any stage."""
     if state.consent is None:
         return Greet()
     if state.consent is False:
         return Close(status=None, reason="consent_declined")
     if state.opted_out:
         return Close(status=Status.WITHDRAWN)
+    for field_config in config.fields:
+        field = state.field(field_config.type)
+        if not (field_config.knock_out and field.status == "valid"):
+            continue
+        knock_out = KNOCK_OUTS[field_config.type]
+        if knock_out.fails(field.value):
+            return Close(
+                status=Status.REJECTION_PROPOSED,
+                reason=knock_out.rule,
+                field=field_config.type,
+                within_hours=config.review_delay_hours,
+            )
     for field_config in config.fields:
         field = state.field(field_config.type)
         if field.status == "empty":
