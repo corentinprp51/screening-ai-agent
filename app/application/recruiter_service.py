@@ -7,7 +7,7 @@ from pydantic import BaseModel, JsonValue
 
 from app.application.ports import CandidateRepository, Clock, LLMPort
 from app.application.screening_service import UnknownCandidate
-from app.domain.fields import format_value
+from app.domain.fields import KNOCK_OUTS, format_value
 from app.domain.flow import Action, Close, next_action, stage_of
 from app.domain.models import (
     Candidate,
@@ -32,7 +32,7 @@ class QueueRow(BaseModel):
     id: int
     handle: str
     name: str | None
-    city: str | None = None  # filled by the service-area ticket
+    city: str | None = None
     status: Status
     stage: str
     score: int
@@ -95,6 +95,7 @@ class RecruiterService:
                 id=candidate.id,
                 handle=candidate.handle,
                 name=candidate.name,
+                city=candidate.city,
                 status=candidate.status,
                 stage=candidate.state.stage,
                 score=candidate.score.total,
@@ -148,7 +149,12 @@ class RecruiterService:
     def confirm_rejection(self, candidate_id: int) -> None:
         """Reject the candidate and send the rejection message for the failed rule."""
         candidate, proposal = self._proposal(candidate_id)
-        rejection = Close(status=Status.REJECTED, reason=proposal.reason, field=proposal.field)
+        rejection = Close(
+            status=Status.REJECTED,
+            reason=proposal.reason,
+            field=proposal.field,
+            offer_contact=KNOCK_OUTS[proposal.field].offers_contact,
+        )
         reply = self._reply(candidate, rejection)
         candidate.status = Status.REJECTED
         self._record(candidate, "outcome", status=Status.REJECTED, rule=proposal.reason)

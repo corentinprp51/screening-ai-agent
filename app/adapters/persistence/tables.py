@@ -11,6 +11,7 @@ class CandidateRow(SQLModel, table=True):
     client_id: str = Field(index=True)
     handle: str
     name: str | None = None
+    city: str | None = None
     status: str = Field(index=True)
     stage: str
     score: int = Field(index=True)

@@ -5,12 +5,19 @@ Turn: extract (LLM) → validate (code) → update state → next_action() and p
 """
 
 import re
+from datetime import date
 from typing import Literal
 
 from pydantic import JsonValue
 
 from app.application.ports import CandidateRepository, Clock, LLMPort
-from app.domain.fields import INVALID, VALIDATORS, update_field
+from app.domain.fields import (
+    INVALID,
+    VALIDATORS,
+    Verdict,
+    update_field,
+    validate_service_area,
+)
 from app.domain.flow import (
     Action,
     Ask,
@@ -29,7 +36,9 @@ from app.domain.models import (
     Event,
     Extraction,
     FieldState,
+    FieldValue,
     Message,
+    Place,
     Status,
 )
 from app.domain.scoring import priority_score
@@ -233,18 +242,20 @@ class ScreeningService:
         """Validate one field. Attempts are only used by the question asked: an invalid
         answer volunteered for another field is ignored. A value understood below the
         confidence threshold, or a new value for a valid field (a correction), waits for
-        the candidate's confirmation instead of being kept."""
+        the candidate's confirmation instead of being kept, as does a value the validator is
+        unsure of (a close service-area match)."""
         extracted = getattr(extraction, field_type)
         # A new answer replaces a value still waiting for confirmation.
         current = candidate.state.field(field_type).model_copy(update={"unconfirmed": None})
         asked = isinstance(pending, Ask | FollowUp) and pending.field == field_type
         if extracted is not None:
-            verdict = VALIDATORS[field_type](extracted.value, current, self._clock.now().date())
+            verdict = self._validate(field_type, extracted.value, current)
             if verdict.status == "invalid" and not asked:
                 return
             updated = update_field(current, verdict, extracted.raw_answer, extracted.confidence)
             if verdict.status != "invalid" and (
                 current.status == "valid"
+                or verdict.unsure
                 or extracted.confidence < self._config.confidence_threshold
             ):
                 if current.status == "valid" and updated.value == current.value:
@@ -262,6 +273,13 @@ class ScreeningService:
         else:
             return
         self._set_field(candidate, field_type, updated, events)
+
+    def _validate(
+        self, field_type: str, value: FieldValue | Place | date, current: FieldState
+    ) -> Verdict:
+        if field_type == "service_area":
+            return validate_service_area(value, current, self._config.service_areas)
+        return VALIDATORS[field_type](value, current, self._clock.now().date())
 
     def _apply_confirmation(
         self, candidate: Candidate, field_type: str, confirmed: bool, events: list[Event]
@@ -292,6 +310,8 @@ class ScreeningService:
         if updated.status == "valid":
             if field_type == "name":
                 candidate.name = updated.value
+            if field_type == "service_area":
+                candidate.city = updated.value.city
             event_type = "field_corrected" if corrected else "field_captured"
             events.append(self._event(candidate, event_type, field=field_type))
         elif updated.status == "needs_review":

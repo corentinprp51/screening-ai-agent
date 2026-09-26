@@ -11,6 +11,8 @@ fields:
     knock_out: true
   - type: own_vehicle
     knock_out: true
+  - type: service_area
+    knock_out: true
   - type: availability
   - type: schedule
   - type: experience
@@ -21,6 +23,19 @@ review_delay_hours: 24
 
 # An answer understood with less confidence than this is confirmed with the candidate.
 confidence_threshold: 0.7
+
+# Where the client hires: country → city → zones (districts or nearby towns, may be empty).
+# The city is what the knock-out checks; a zone only helps find the city.
+service_areas:
+  ES:
+    Madrid: [Centro, Chamberí, Salamanca, Tetuán, Getafe, Móstoles, Alcobendas]
+    Barcelona: [Eixample, Gràcia, Sants, L'Hospitalet]
+    Valencia: [Ruzafa, Benimaclet]
+    Sevilla: [Triana, Nervión]
+  MX:
+    Ciudad de México: [Centro, Coyoacán, Polanco, Roma, Condesa, Iztapalapa]
+    Guadalajara: [Centro, Zapopan, Tlaquepaque]
+    Monterrey: [San Nicolás, Guadalupe]
 
 # The priority score (0-100) ranks the queue. Weights: the most points per field, adding up to 100.
 scoring:
