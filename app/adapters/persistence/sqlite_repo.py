@@ -1,0 +1,115 @@
+import json
+from pathlib import Path
+
+from sqlalchemy import Engine
+from sqlalchemy.pool import StaticPool
+from sqlmodel import Session, SQLModel, create_engine, delete, select
+
+from app.adapters.persistence.tables import CandidateRow, EventRow, MessageRow
+from app.domain.models import Candidate, CandidateState, Event, Message
+
+
+def create_sqlite_engine(url: str) -> Engine:
+    """Create the engine and the tables (no migrations: delete data/*.db on schema change).
+
+    `sqlite://` is an in-memory database shared by every session, for tests.
+    """
+    if url == "sqlite://":
+        engine = create_engine(url, connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    else:
+        Path(url.removeprefix("sqlite:///")).parent.mkdir(parents=True, exist_ok=True)
+        engine = create_engine(url, connect_args={"check_same_thread": False})
+    SQLModel.metadata.create_all(engine)
+    return engine
+
+
+class SqliteCandidateRepository:
+    def __init__(self, engine: Engine) -> None:
+        self._engine = engine
+
+    def get_by_handle(self, client_id: str, handle: str) -> Candidate | None:
+        with Session(self._engine) as session:
+            row = session.exec(
+                select(CandidateRow).where(
+                    CandidateRow.client_id == client_id, CandidateRow.handle == handle
+                )
+            ).first()
+            return _to_candidate(row) if row else None
+
+    def save(self, candidate: Candidate) -> Candidate:
+        with Session(self._engine) as session:
+            row = session.get(CandidateRow, candidate.id) if candidate.id else CandidateRow()
+            row.client_id = candidate.client_id
+            row.handle = candidate.handle
+            row.name = candidate.name
+            row.status = candidate.status
+            row.stage = candidate.state.stage
+            row.state_json = candidate.state.model_dump_json()
+            row.created_at = candidate.created_at
+            row.updated_at = candidate.updated_at
+            session.add(row)
+            session.commit()
+            session.refresh(row)
+            return _to_candidate(row)
+
+    def delete(self, candidate_id: int) -> None:
+        with Session(self._engine) as session:
+            session.exec(delete(MessageRow).where(MessageRow.candidate_id == candidate_id))
+            session.exec(delete(EventRow).where(EventRow.candidate_id == candidate_id))
+            session.exec(delete(CandidateRow).where(CandidateRow.id == candidate_id))
+            session.commit()
+
+    def add_message(self, candidate_id: int, message: Message) -> None:
+        with Session(self._engine) as session:
+            session.add(MessageRow(candidate_id=candidate_id, **message.model_dump()))
+            session.commit()
+
+    def list_messages(self, candidate_id: int) -> list[Message]:
+        with Session(self._engine) as session:
+            rows = session.exec(
+                select(MessageRow)
+                .where(MessageRow.candidate_id == candidate_id)
+                .order_by(MessageRow.id)
+            ).all()
+            return [Message.model_validate(row, from_attributes=True) for row in rows]
+
+    def add_event(self, candidate_id: int, event: Event) -> None:
+        with Session(self._engine) as session:
+            session.add(
+                EventRow(
+                    candidate_id=candidate_id,
+                    type=event.type,
+                    stage=event.stage,
+                    payload_json=json.dumps(event.payload),
+                    created_at=event.created_at,
+                )
+            )
+            session.commit()
+
+    def list_events(self, candidate_id: int) -> list[Event]:
+        with Session(self._engine) as session:
+            rows = session.exec(
+                select(EventRow).where(EventRow.candidate_id == candidate_id).order_by(EventRow.id)
+            ).all()
+            return [
+                Event(
+                    type=row.type,
+                    stage=row.stage,
+                    payload=json.loads(row.payload_json),
+                    created_at=row.created_at,
+                )
+                for row in rows
+            ]
+
+
+def _to_candidate(row: CandidateRow) -> Candidate:
+    return Candidate(
+        id=row.id,
+        client_id=row.client_id,
+        handle=row.handle,
+        name=row.name,
+        status=row.status,
+        state=CandidateState.model_validate_json(row.state_json),
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )

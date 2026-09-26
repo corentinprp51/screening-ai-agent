@@ -73,6 +73,9 @@ LLM provider: TBD, set through config, behind `LLMPort`.
 
 ```
 uv sync
+uv run pytest
+uv run uvicorn app.api.main:app --reload
+uv run python -m app.cli                  # terminal chat
 task dev:format                           # ruff format
 task dev:lint                             # ruff check
 task dev:lint:fix                         # ruff check --fix

@@ -1,0 +1,65 @@
+"""The flow: the next action is derived from the candidate state (ADR 0001)."""
+
+from dataclasses import dataclass
+
+from app.domain.models import CandidateState, ClientConfig, Status
+
+
+@dataclass(frozen=True)
+class Greet:
+    """The greeting, which carries the consent question."""
+
+
+@dataclass(frozen=True)
+class Ask:
+    field: str
+    attempt: int
+
+
+@dataclass(frozen=True)
+class FollowUp:
+    field: str
+    missing: str
+
+
+@dataclass(frozen=True)
+class Recap:
+    pass
+
+
+@dataclass(frozen=True)
+class Close:
+    status: Status | None
+    reason: str | None = None
+
+
+Action = Greet | Ask | FollowUp | Recap | Close
+
+
+def next_action(state: CandidateState, config: ClientConfig) -> Action:
+    """Consent → fields in config order → recap → close."""
+    if state.consent is None:
+        return Greet()
+    if state.consent is False:
+        return Close(status=None, reason="consent_declined")
+    for field_config in config.fields:
+        field = state.field(field_config.type)
+        if field.status == "empty":
+            return Ask(field_config.type, attempt=field.attempts)
+        if field.status == "incomplete":
+            return FollowUp(field_config.type, missing=field.missing)
+    if not state.recap_confirmed:
+        return Recap()
+    return Close(status=Status.QUALIFIED)
+
+
+def stage_of(action: Action) -> str:
+    match action:
+        case Greet():
+            return "consent"
+        case Ask(field=field) | FollowUp(field=field):
+            return field
+        case Recap():
+            return "recap"
+        case Close():
+            return "closed"

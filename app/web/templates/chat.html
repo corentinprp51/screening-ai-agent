@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Chat{% endblock %}
+{% block content %}
+<div class="flex items-baseline justify-between mb-4">
+  <h1 class="text-xl font-semibold">{{ candidate.name or candidate.handle }}</h1>
+  <a href="/chat" class="text-sm text-slate-500 underline">New application</a>
+</div>
+<div id="messages" class="bg-white rounded-lg shadow p-4 space-y-2 min-h-64">
+  {% include "partials/bubbles.html" %}
+</div>
+<form class="mt-3 flex gap-2"
+      hx-post="/chat/{{ candidate.handle }}/messages"
+      hx-target="#messages" hx-swap="beforeend"
+      hx-on::after-request="this.reset()">
+  <input name="text" required autocomplete="off" autofocus
+         class="flex-1 border rounded px-3 py-2" placeholder="Type your answer">
+  <button class="bg-emerald-600 text-white rounded px-4 py-2">Send</button>
+</form>
+{% endblock %}

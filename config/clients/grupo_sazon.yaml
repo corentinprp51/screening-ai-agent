@@ -1,0 +1,20 @@
+persona:
+  agent_name: Lucía
+  client_name: Grupo Sazón
+
+default_language: es
+
+# Asked in this order after consent.
+fields:
+  - type: name
+
+templates:
+  greeting:
+    es: >-
+      ¡Hola! Soy {agent_name}, asistente virtual de selección de {client_name} 👋
+      Te escribo por tu candidatura de repartidor/a: son 2 minutos y un reclutador revisa cada perfil.
+      ¿Seguimos?
+    en: >-
+      Hi! I'm {agent_name}, the virtual hiring assistant for {client_name} 👋
+      I'm writing about your delivery driver application: it takes 2 minutes and a recruiter reviews every profile.
+      Shall we start?
