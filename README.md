@@ -4,11 +4,13 @@ A messaging agent that screens delivery-driver applicants for a client, and a da
 
 ## Run
 
+Requires [uv](https://docs.astral.sh/uv/) and [Task](https://taskfile.dev/).
+
 ```
-uv sync
-uv run uvicorn app.api.main:app --reload   # web chat at http://localhost:8000/chat
-uv run python -m app.cli                   # the same screening in the terminal
-uv run pytest
+task dev:install   # uv sync
+task dev:run       # web chat at http://localhost:8000/chat
+task dev:cli       # the same screening in the terminal
+task dev:test
 ```
 
 `CLIENT_ID` selects the client config in `config/clients/` (default `grupo_sazon`). `DATABASE_URL` defaults to `sqlite:///data/screening.db`; delete `data/*.db` when the schema changes.

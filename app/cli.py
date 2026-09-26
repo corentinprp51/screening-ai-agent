@@ -1,4 +1,4 @@
-"""Terminal chat on the same ScreeningService: `uv run python -m app.cli`."""
+"""Terminal chat on the same ScreeningService: `task dev:cli`."""
 
 from app.api.deps import get_screening_service
 from app.domain.models import Status

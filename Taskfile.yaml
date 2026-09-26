@@ -1,6 +1,27 @@
 version: "3"
 
 tasks:
+  dev:install:
+    desc: Install dependencies with uv
+    cmds:
+      - uv sync
+
+  dev:run:
+    desc: Run the web app with auto-reload (chat at http://localhost:8000/chat)
+    cmds:
+      - uv run uvicorn app.api.main:app --reload
+
+  dev:cli:
+    desc: Run a screening in the terminal
+    interactive: true
+    cmds:
+      - uv run python -m app.cli
+
+  dev:test:
+    desc: Run the tests (extra pytest args after --, e.g. task dev:test -- tests/domain)
+    cmds:
+      - uv run pytest {{.CLI_ARGS}}
+
   dev:format:
     desc: Format code with ruff
     cmds:

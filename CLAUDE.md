@@ -60,6 +60,7 @@ LLM provider: TBD, set through config, behind `LLMPort`.
 - Agent messages: one question, at most 2 sentences, in the language of the candidate's latest message.
 - Frontend: server-rendered Jinja2 + HTMX, Tailwind via CDN, no Node build step.
 - Git: use always conventional commits
+- Every command goes through the Taskfile (`task …`): never document or run a raw `uv run …` command. A new command gets a new task in `Taskfile.yaml` first.
 - No `typing.Any` in `app/` (enforced by ruff TID251): use a precise type, e.g. `pydantic.JsonValue` for JSON data.
 - Before committing, run `task dev:format` and `task dev:lint`; commit only when both pass (use `task dev:lint:fix` for auto-fixable issues).
 
@@ -73,10 +74,10 @@ LLM provider: TBD, set through config, behind `LLMPort`.
 ## Main Commands
 
 ```
-uv sync
-uv run pytest
-uv run uvicorn app.api.main:app --reload
-uv run python -m app.cli                  # terminal chat
+task dev:install                          # uv sync
+task dev:run                              # web app with reload, chat at http://localhost:8000/chat
+task dev:cli                              # terminal chat
+task dev:test                             # pytest (args after --: task dev:test -- tests/domain)
 task dev:format                           # ruff format
 task dev:lint                             # ruff check
 task dev:lint:fix                         # ruff check --fix
