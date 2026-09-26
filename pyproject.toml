@@ -1,0 +1,7 @@
+[project]
+name = "screening-ai-agent"
+version = "0.1.0"
+description = "A screening AI Agent"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
