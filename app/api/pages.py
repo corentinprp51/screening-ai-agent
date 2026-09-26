@@ -1,11 +1,12 @@
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.api.deps import Recruiter, Screening
+from app.application.recruiter_service import LLMUnavailable, NotRejectionProposed
 from app.application.screening_service import UnknownCandidate
 from app.domain.models import Status
 
@@ -76,6 +77,16 @@ def chat_message(request: Request, handle: str, service: Screening, text: Annota
     )
 
 
+@router.get("/chat/{handle}/messages")
+def chat_messages(request: Request, handle: str, service: Screening):
+    """HTMX polling: the whole transcript, so messages sent by a recruiter action appear."""
+    if service.candidate(handle) is None:
+        return HTMLResponse(status_code=204)  # consent declined: keep what is on screen
+    return templates.TemplateResponse(
+        request, "partials/bubbles.html", {"messages": service.transcript(handle)}
+    )
+
+
 @router.get("/dashboard")
 def dashboard(request: Request, service: Recruiter, status: Status | None = None):
     return templates.TemplateResponse(
@@ -90,3 +101,26 @@ def candidate_detail(request: Request, candidate_id: int, service: Recruiter):
     except UnknownCandidate:
         return HTMLResponse("Unknown candidate", status_code=404)
     return templates.TemplateResponse(request, "candidate.html", {"candidate": detail})
+
+
+@router.post("/dashboard/candidates/{candidate_id}/{decision}")
+def candidate_decision(
+    candidate_id: int,
+    decision: Literal["confirm-rejection", "override-rejection"],
+    service: Recruiter,
+    back: Annotated[str, Form()] = "",
+):
+    """Confirm or Override from the "To confirm" tab or the candidate page."""
+    action = (
+        service.confirm_rejection if decision == "confirm-rejection" else service.override_rejection
+    )
+    try:
+        action(candidate_id)
+    except UnknownCandidate:
+        return HTMLResponse("Unknown candidate", status_code=404)
+    except NotRejectionProposed:
+        return HTMLResponse("The candidate is not in Rejection proposed", status_code=409)
+    except LLMUnavailable:
+        return HTMLResponse("The message could not be written, try again", status_code=503)
+    target = back if back.startswith("/dashboard") else f"/dashboard/candidates/{candidate_id}"
+    return RedirectResponse(target, status_code=303)

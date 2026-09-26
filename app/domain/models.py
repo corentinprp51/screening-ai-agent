@@ -120,6 +120,7 @@ class FieldState(BaseModel):
 class CandidateState(BaseModel):
     consent: bool | None = None
     opted_out: bool = False
+    overridden_knock_outs: list[str] = Field(default_factory=list)  # rules set aside
     fields: dict[str, FieldState] = Field(default_factory=dict)
     recap_confirmed: bool = False
     language: Language = "es"

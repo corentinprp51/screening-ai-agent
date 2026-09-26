@@ -10,6 +10,14 @@
   <span class="text-sm text-slate-500">stage: {{ candidate.stage }}</span>
 </div>
 
+{% if candidate.rule %}
+<div class="mb-4 flex flex-wrap items-center gap-4 rounded-lg bg-red-50 border border-red-200 p-3 text-sm">
+  <span>Failed rule: <strong>{{ candidate.rule }}</strong></span>
+  <span class="text-slate-600">Answer: “{{ candidate.answer or "—" }}”</span>
+  {% with candidate_id = candidate.id, back = "/dashboard/candidates/" ~ candidate.id %}{% include "partials/decision.html" %}{% endwith %}
+</div>
+{% endif %}
+
 {% if candidate.flags %}
 <div class="mb-4">
   {% for flag in candidate.flags %}<span class="inline-block rounded bg-amber-100 text-amber-800 px-2 py-0.5 mr-1 text-sm">{{ flag }}</span>{% endfor %}

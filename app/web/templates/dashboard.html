@@ -2,6 +2,7 @@
 {% block title %}Dashboard{% endblock %}
 {% block width %}max-w-6xl{% endblock %}
 {% block content %}
+{% set to_confirm = current == "rejection_proposed" %}
 <div class="flex items-baseline justify-between mb-4">
   <h1 class="text-2xl font-semibold">Candidates</h1>
   <a href="/chat" class="bg-emerald-600 text-white rounded px-3 py-1.5 text-sm">New application</a>
@@ -23,6 +24,7 @@
         <th class="p-3">Name</th><th class="p-3">City</th><th class="p-3">Status</th>
         <th class="p-3">Stage</th><th class="p-3">Score</th><th class="p-3">Flags</th>
         <th class="p-3">Last activity</th>
+        {% if to_confirm %}<th class="p-3">Failed rule</th><th class="p-3">Answer</th><th class="p-3"></th>{% endif %}
       </tr>
     </thead>
     <tbody>
@@ -37,9 +39,16 @@
           {% for flag in row.flags %}<span class="inline-block rounded bg-amber-100 text-amber-800 px-2 py-0.5 mr-1">{{ flag }}</span>{% endfor %}
         </td>
         <td class="p-3 text-slate-500">{{ row.last_activity.strftime("%Y-%m-%d %H:%M") }}</td>
+        {% if to_confirm %}
+        <td class="p-3 font-medium">{{ row.rule }}</td>
+        <td class="p-3 text-slate-600">{{ row.answer or "—" }}</td>
+        <td class="p-3">
+          {% with candidate_id = row.id, back = "/dashboard?status=rejection_proposed" %}{% include "partials/decision.html" %}{% endwith %}
+        </td>
+        {% endif %}
       </tr>
       {% else %}
-      <tr><td colspan="7" class="p-6 text-center text-slate-500">No candidates.</td></tr>
+      <tr><td colspan="{{ 10 if to_confirm else 7 }}" class="p-6 text-center text-slate-500">No candidates.</td></tr>
       {% endfor %}
     </tbody>
   </table>

@@ -27,10 +27,15 @@ def get_repository() -> SqliteCandidateRepository:
 
 
 @lru_cache
+def get_llm() -> FakeLLM:
+    return FakeLLM()
+
+
+@lru_cache
 def get_screening_service() -> ScreeningService:
     return ScreeningService(
         config=get_config(),
-        llm=FakeLLM(),
+        llm=get_llm(),
         repo=get_repository(),
         clock=SystemClock(),
     )
@@ -38,7 +43,9 @@ def get_screening_service() -> ScreeningService:
 
 @lru_cache
 def get_recruiter_service() -> RecruiterService:
-    return RecruiterService(config=get_config(), repo=get_repository())
+    return RecruiterService(
+        config=get_config(), llm=get_llm(), repo=get_repository(), clock=SystemClock()
+    )
 
 
 Screening = Annotated[ScreeningService, Depends(get_screening_service)]

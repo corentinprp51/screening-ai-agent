@@ -46,7 +46,8 @@ Action = Greet | Ask | FollowUp | Recap | Close
 
 def next_action(state: CandidateState, config: ClientConfig) -> Action:
     """Consent → knock-outs → fields in config order (needs-review fields are skipped)
-    → recap → close. An opt-out after consent closes as Withdrawn from any stage."""
+    → recap → close. An opt-out after consent closes as Withdrawn from any stage.
+    A knock-out a recruiter overrode is ignored from then on."""
     if state.consent is None:
         return Greet()
     if state.consent is False:
@@ -58,6 +59,8 @@ def next_action(state: CandidateState, config: ClientConfig) -> Action:
         if not (field_config.knock_out and field.status == "valid"):
             continue
         knock_out = KNOCK_OUTS[field_config.type]
+        if knock_out.rule in state.overridden_knock_outs:
+            continue
         if knock_out.fails(field.value):
             return Close(
                 status=Status.REJECTION_PROPOSED,

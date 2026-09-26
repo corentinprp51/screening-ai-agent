@@ -1,0 +1,11 @@
+{# Confirm / Override for a candidate in Rejection proposed. Needs `candidate_id` and `back`. #}
+<div class="flex gap-2">
+  <form method="post" action="/dashboard/candidates/{{ candidate_id }}/confirm-rejection">
+    <input type="hidden" name="back" value="{{ back }}">
+    <button class="rounded bg-red-600 text-white px-3 py-1 text-sm">Confirm</button>
+  </form>
+  <form method="post" action="/dashboard/candidates/{{ candidate_id }}/override-rejection">
+    <input type="hidden" name="back" value="{{ back }}">
+    <button class="rounded border px-3 py-1 text-sm bg-white">Override</button>
+  </form>
+</div>
