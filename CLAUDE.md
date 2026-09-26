@@ -37,23 +37,6 @@ tests/
 - `domain/` never imports from `adapters/`, FastAPI, SQLModel or PydanticAI.
 - JSON routes and HTML routes call the same services. No business logic in routes or templates.
 
-## Architecture layout
-
-```
-config/clients/<client>.yaml  # fields, zones, knock-outs, persona, re-engagement timings
-config/faq/<client>.md
-app/core/        # engine, state_machine, validators, scoring
-app/llm/         # client, schemas, prompts/
-app/guardrails/
-app/channels/    # base adapter, webchat (real), whatsapp (stub only)
-app/storage/
-app/jobs/        # re-engagement
-app/api/
-frontend/
-evals/           # personas + runner; transcripts saved to samples/conversations/
-tests/
-```
-
 ## Storage (SQLite)
 
 - Tables: `candidates` (client_id, handle, name, status, score, city, `state_json`, `summary_json`, timestamps), `messages` (candidate_id, role, content, language, created_at), `events` (candidate_id, type, stage, payload_json, created_at) for analytics.
@@ -76,6 +59,7 @@ LLM provider: TBD, set through config, behind `LLMPort`.
 - Validators and `next_action()` are pure functions with unit tests. Tests use `FakeLLM`, never a real API.
 - Agent messages: one question, at most 2 sentences, in the language of the candidate's latest message.
 - Frontend: server-rendered Jinja2 + HTMX, Tailwind via CDN, no Node build step.
+- Git: use always conventional commits
 
 ## Build order Suggestion
 
@@ -162,3 +146,13 @@ For multi-step tasks, state a brief plan:
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked in this repo's GitHub Issues (`corentinprp51/screening-ai-agent`) via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
