@@ -17,6 +17,7 @@ class CandidateRow(SQLModel, table=True):
     score: int = Field(index=True)
     state_json: str
     score_json: str  # the breakdown: points per field
+    summary_json: str | None = None  # the summary and the facts it was phrased from
     created_at: datetime
     updated_at: datetime
 

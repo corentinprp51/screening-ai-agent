@@ -22,7 +22,7 @@
     <thead class="text-left text-slate-500 border-b">
       <tr>
         <th class="p-3">Name</th><th class="p-3">City</th><th class="p-3">Status</th>
-        <th class="p-3">Stage</th><th class="p-3">Score</th><th class="p-3">Flags</th>
+        <th class="p-3">Stage</th><th class="p-3">Score</th><th class="p-3">Next action</th><th class="p-3">Flags</th>
         <th class="p-3">Last activity</th>
         {% if to_confirm %}<th class="p-3">Failed rule</th><th class="p-3">Answer</th><th class="p-3"></th>{% endif %}
       </tr>
@@ -30,11 +30,15 @@
     <tbody>
       {% for row in rows %}
       <tr class="border-b last:border-0 hover:bg-slate-50">
-        <td class="p-3"><a href="/dashboard/candidates/{{ row.id }}" class="underline">{{ row.name or row.handle }}</a></td>
+        <td class="p-3">
+          <a href="/dashboard/candidates/{{ row.id }}" class="underline">{{ row.name or row.handle }}</a>
+          {% if row.summary %}<p class="mt-1 max-w-xs text-xs text-slate-500 whitespace-pre-line">{{ row.summary }}</p>{% endif %}
+        </td>
         <td class="p-3">{{ row.city or "—" }}</td>
         <td class="p-3">{{ status_labels[row.status] }}</td>
         <td class="p-3">{{ row.stage }}</td>
         <td class="p-3 font-medium">{{ row.score }}</td>
+        <td class="p-3">{{ row.next_action or "—" }}</td>
         <td class="p-3">
           {% for flag in row.flags %}<span class="inline-block rounded bg-amber-100 text-amber-800 px-2 py-0.5 mr-1">{{ flag }}</span>{% endfor %}
         </td>
@@ -48,7 +52,7 @@
         {% endif %}
       </tr>
       {% else %}
-      <tr><td colspan="{{ 10 if to_confirm else 7 }}" class="p-6 text-center text-slate-500">No candidates.</td></tr>
+      <tr><td colspan="{{ 11 if to_confirm else 8 }}" class="p-6 text-center text-slate-500">No candidates.</td></tr>
       {% endfor %}
     </tbody>
   </table>

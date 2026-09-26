@@ -6,7 +6,15 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, col, create_engine, delete, select
 
 from app.adapters.persistence.tables import CandidateRow, EventRow, MessageRow
-from app.domain.models import Candidate, CandidateState, Event, Message, Score, Status
+from app.domain.models import (
+    Candidate,
+    CandidateState,
+    Event,
+    Message,
+    Score,
+    Status,
+    Summary,
+)
 
 
 def create_sqlite_engine(url: str) -> Engine:
@@ -67,6 +75,7 @@ class SqliteCandidateRepository:
             row.score = candidate.score.total
             row.state_json = candidate.state.model_dump_json()
             row.score_json = candidate.score.model_dump_json()
+            row.summary_json = candidate.summary.model_dump_json() if candidate.summary else None
             row.created_at = candidate.created_at
             row.updated_at = candidate.updated_at
             session.add(row)
@@ -134,6 +143,7 @@ def _to_candidate(row: CandidateRow) -> Candidate:
         status=row.status,
         state=CandidateState.model_validate_json(row.state_json),
         score=Score.model_validate_json(row.score_json),
+        summary=Summary.model_validate_json(row.summary_json) if row.summary_json else None,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )

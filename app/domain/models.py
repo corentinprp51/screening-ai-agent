@@ -155,6 +155,7 @@ class ClientConfig(BaseModel):
     default_language: Language
     fields: list[FieldConfig] = Field(min_length=1)
     review_delay_hours: int = Field(gt=0)  # a recruiter replies to a proposed rejection within
+    call_within_hours: int = Field(gt=0)  # a recruiter calls a qualified candidate within
     confidence_threshold: float = Field(ge=0, le=1)  # below it, a value is confirmed first
     service_areas: ServiceAreas = Field(min_length=1)
     scoring: Scoring
@@ -220,6 +221,14 @@ class Score(BaseModel):
         return sum(self.points.values())
 
 
+class Summary(BaseModel):
+    """The recruiter summary and the facts code gave the LLM to phrase it. `text` is None
+    when the LLM call failed."""
+
+    text: str | None = None
+    facts: dict[str, JsonValue]
+
+
 class Candidate(BaseModel):
     id: int | None = None
     client_id: str
@@ -229,6 +238,7 @@ class Candidate(BaseModel):
     status: Status = Status.IN_PROGRESS
     state: CandidateState = Field(default_factory=CandidateState)
     score: Score = Field(default_factory=Score)
+    summary: Summary | None = None  # written when the questions stop
     created_at: datetime
     updated_at: datetime
 

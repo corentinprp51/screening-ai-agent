@@ -6,7 +6,7 @@ from datetime import datetime
 from pydantic import BaseModel, JsonValue
 
 from app.application.ports import CandidateRepository, Clock, LLMPort
-from app.application.screening_service import UnknownCandidate
+from app.application.screening_service import UnknownCandidate, write_summary
 from app.domain.fields import KNOCK_OUTS, format_value
 from app.domain.flow import Action, Close, next_action, stage_of
 from app.domain.models import (
@@ -18,6 +18,7 @@ from app.domain.models import (
     Message,
     Status,
 )
+from app.domain.summary import recruiter_action
 
 
 class NotRejectionProposed(ValueError):
@@ -40,6 +41,8 @@ class QueueRow(BaseModel):
     last_activity: datetime
     rule: str | None = None  # the failed knock-out, in Rejection proposed
     answer: str | None = None  # the candidate's answer to it
+    summary: str | None = None
+    next_action: str | None = None
 
 
 class FieldView(BaseModel):
@@ -74,6 +77,8 @@ class CandidateDetail(BaseModel):
     flags: list[str]
     rule: str | None = None
     answer: str | None = None
+    summary: str | None = None
+    next_action: str | None = None
     messages: list[Message]
     events: list[Event]
 
@@ -102,6 +107,7 @@ class RecruiterService:
                 flags=candidate.state.all_flags(),
                 last_activity=candidate.updated_at,
                 **self._failed_knock_out(candidate),
+                **self._handoff(candidate),
             )
             for candidate in self._repo.list_candidates(self._config.client_id, status)
         ]
@@ -142,6 +148,7 @@ class RecruiterService:
             fields=fields,
             flags=candidate.state.all_flags(),
             **self._failed_knock_out(candidate),
+            **self._handoff(candidate),
             messages=self._repo.list_messages(candidate_id),
             events=self._repo.list_events(candidate_id),
         )
@@ -172,8 +179,11 @@ class RecruiterService:
             # Another knock-out had already failed (a volunteered answer): propose it now.
             answer = candidate.state.field(action.field).raw_answer
             self._record(candidate, "rejection_proposed", rule=action.reason, answer=answer)
+            if error := write_summary(candidate, self._config, self._llm):
+                self._record(candidate, "llm_failure", error=repr(error))
         else:
             candidate.status = Status.IN_PROGRESS
+            candidate.summary = None  # a new one is written when the questions stop again
         self._send(candidate, reply)
 
     def _get(self, candidate_id: int) -> Candidate:
@@ -200,6 +210,13 @@ class RecruiterService:
         return {
             "rule": proposal.reason,
             "answer": candidate.state.field(proposal.field).raw_answer,
+        }
+
+    def _handoff(self, candidate: Candidate) -> dict[str, str | None]:
+        """The summary text and the next action, computed from the status."""
+        return {
+            "summary": candidate.summary.text if candidate.summary else None,
+            "next_action": recruiter_action(candidate.status, candidate.state, self._config),
         }
 
     def _reply(self, candidate: Candidate, action: Action) -> str:
