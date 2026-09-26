@@ -691,3 +691,23 @@ def test_restating_the_previous_value_drops_the_correction():
 
     assert service.handle_message(HANDLE, "no, sí tengo") == "[fake] ask:availability (attempt 0)"
     assert service.candidate(HANDLE).state.fields["license"].value == License(has_license=True)
+
+
+def test_the_score_is_recomputed_and_stored_on_every_state_update():
+    service, _ = make_service()
+    service.apply(PHONE)
+    answer(service, "yes", "Ana López", "yes", "yes")
+    assert service.candidate(HANDLE).score.total == 0
+
+    answer(service, "full_time")
+    assert service.candidate(HANDLE).score.points["availability"] == 30
+
+    answer(service, "morning", "2", "immediate")
+    candidate = service.candidate(HANDLE)
+    assert candidate.score.points == {
+        "availability": 30,
+        "schedule": 0,
+        "start_date": 30,
+        "experience": 8,
+    }
+    assert candidate.score.total == 68

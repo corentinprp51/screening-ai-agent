@@ -22,6 +22,17 @@ review_delay_hours: 24
 # An answer understood with less confidence than this is confirmed with the candidate.
 confidence_threshold: 0.7
 
+# The priority score (0-100) ranks the queue. Weights: the most points per field, adding up to 100.
+scoring:
+  weights:
+    availability: 30 # overlaps the open shifts' availability
+    schedule: 20 # in the open shifts, or flexible
+    start_date: 30 # full up to 7 days, then down to 0 at 90 days
+    experience: 20 # min(years, 5) / 5 of the weight
+  open_shifts:
+    availability: [full_time, weekends]
+    schedule: [evening]
+
 templates:
   greeting:
     es: >-

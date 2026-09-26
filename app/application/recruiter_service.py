@@ -35,7 +35,7 @@ class QueueRow(BaseModel):
     city: str | None = None  # filled by the service-area ticket
     status: Status
     stage: str
-    score: int | None = None  # filled by the priority-score ticket
+    score: int
     flags: list[str]
     last_activity: datetime
     rule: str | None = None  # the failed knock-out, in Rejection proposed
@@ -53,12 +53,23 @@ class FieldView(BaseModel):
     flags: list[str]
 
 
+class ScoreLine(BaseModel):
+    """One field's part of the priority score: why the candidate ranks where they do."""
+
+    field: str
+    display: str
+    points: int
+    weight: int
+
+
 class CandidateDetail(BaseModel):
     id: int
     handle: str
     name: str | None
     status: Status
     stage: str
+    score: int
+    breakdown: list[ScoreLine]
     fields: list[FieldView]
     flags: list[str]
     rule: str | None = None
@@ -77,7 +88,8 @@ class RecruiterService:
         self._clock = clock
 
     def queue(self, status: Status | None = None) -> list[QueueRow]:
-        """Every candidate of the client, most recent activity first."""
+        """Every candidate of the client, highest priority score first, then most recent
+        activity."""
         return [
             QueueRow(
                 id=candidate.id,
@@ -85,6 +97,7 @@ class RecruiterService:
                 name=candidate.name,
                 status=candidate.status,
                 stage=candidate.state.stage,
+                score=candidate.score.total,
                 flags=candidate.state.all_flags(),
                 last_activity=candidate.updated_at,
                 **self._failed_knock_out(candidate),
@@ -115,6 +128,16 @@ class RecruiterService:
             name=candidate.name,
             status=candidate.status,
             stage=candidate.state.stage,
+            score=candidate.score.total,
+            breakdown=[
+                ScoreLine(
+                    field=field,
+                    display=format_value(candidate.state.field(field).value),
+                    points=points,
+                    weight=getattr(self._config.scoring.weights, field),
+                )
+                for field, points in candidate.score.points.items()
+            ],
             fields=fields,
             flags=candidate.state.all_flags(),
             **self._failed_knock_out(candidate),

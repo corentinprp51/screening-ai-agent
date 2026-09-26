@@ -113,6 +113,7 @@ def test_page_candidate_detail(client):
     response = client.get(f"/dashboard/candidates/{candidate_id(client)}")
     assert response.status_code == 200
     assert HANDLE in response.text
+    assert "Priority score: 0 / 100" in response.text
 
 
 def test_page_unknown_candidate(client):

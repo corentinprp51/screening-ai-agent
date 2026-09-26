@@ -27,6 +27,24 @@
 <div class="grid gap-4 lg:grid-cols-2">
   <section class="space-y-4">
     <div class="bg-white rounded-lg shadow overflow-x-auto">
+      <h2 class="font-semibold p-3 border-b">Priority score: {{ candidate.score }} / 100</h2>
+      <table class="w-full text-sm">
+        <thead class="text-left text-slate-500 border-b">
+          <tr><th class="p-3">Field</th><th class="p-3">Value</th><th class="p-3">Points</th></tr>
+        </thead>
+        <tbody>
+          {% for line in candidate.breakdown %}
+          <tr class="border-b last:border-0">
+            <td class="p-3 font-medium">{{ line.field }}</td>
+            <td class="p-3">{{ line.display }}</td>
+            <td class="p-3">{{ line.points }} / {{ line.weight }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="bg-white rounded-lg shadow overflow-x-auto">
       <h2 class="font-semibold p-3 border-b">Fields</h2>
       <table class="w-full text-sm">
         <thead class="text-left text-slate-500 border-b">

@@ -13,7 +13,9 @@ class CandidateRow(SQLModel, table=True):
     name: str | None = None
     status: str = Field(index=True)
     stage: str
+    score: int = Field(index=True)
     state_json: str
+    score_json: str  # the breakdown: points per field
     created_at: datetime
     updated_at: datetime
 

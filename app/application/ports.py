@@ -37,7 +37,7 @@ class CandidateRepository(Protocol):
     def get_by_handle(self, client_id: str, handle: str) -> Candidate | None: ...
 
     def list_candidates(self, client_id: str, status: Status | None = None) -> list[Candidate]:
-        """Most recent activity first."""
+        """Highest priority score first, then most recent activity."""
         ...
 
     def save(self, candidate: Candidate) -> Candidate:
