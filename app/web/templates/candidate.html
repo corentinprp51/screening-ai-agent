@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}{{ candidate.name or candidate.handle }}{% endblock %}
+{% block width %}max-w-6xl{% endblock %}
+{% block content %}
+<a href="/dashboard" class="text-sm text-slate-500 underline">← Candidates</a>
+<div class="flex flex-wrap items-baseline gap-3 mt-2 mb-4">
+  <h1 class="text-2xl font-semibold">{{ candidate.name or candidate.handle }}</h1>
+  <span class="text-slate-500">{{ candidate.handle }}</span>
+  <span class="rounded-full bg-slate-900 text-white px-3 py-0.5 text-sm">{{ status_labels[candidate.status] }}</span>
+  <span class="text-sm text-slate-500">stage: {{ candidate.stage }}</span>
+</div>
+
+{% if candidate.flags %}
+<div class="mb-4">
+  {% for flag in candidate.flags %}<span class="inline-block rounded bg-amber-100 text-amber-800 px-2 py-0.5 mr-1 text-sm">{{ flag }}</span>{% endfor %}
+</div>
+{% endif %}
+
+<div class="grid gap-4 lg:grid-cols-2">
+  <section class="space-y-4">
+    <div class="bg-white rounded-lg shadow overflow-x-auto">
+      <h2 class="font-semibold p-3 border-b">Fields</h2>
+      <table class="w-full text-sm">
+        <thead class="text-left text-slate-500 border-b">
+          <tr><th class="p-3">Field</th><th class="p-3">Value</th><th class="p-3">Raw answer</th><th class="p-3">Confidence</th><th class="p-3">Verdict</th></tr>
+        </thead>
+        <tbody>
+          {% for field in candidate.fields %}
+          <tr class="border-b last:border-0 {{ 'bg-amber-50' if field.needs_review }}">
+            <td class="p-3 font-medium">{{ field.field }}</td>
+            <td class="p-3">{{ field.value if field.value is not none else "—" }}</td>
+            <td class="p-3 text-slate-600">{{ field.raw_answer or "—" }}</td>
+            <td class="p-3">{{ "%.2f"|format(field.confidence) if field.confidence is not none else "—" }}</td>
+            <td class="p-3">
+              <span class="{{ 'font-semibold text-amber-700' if field.needs_review }}">{{ field.verdict }}</span>
+              {% for flag in field.flags %}<span class="block text-xs text-amber-700">{{ flag }}</span>{% endfor %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="bg-white rounded-lg shadow">
+      <h2 class="font-semibold p-3 border-b">Events</h2>
+      <ol class="text-sm divide-y">
+        {% for event in candidate.events %}
+        <li class="p-3 flex gap-3">
+          <span class="text-slate-500">{{ event.created_at.strftime("%Y-%m-%d %H:%M") }}</span>
+          <span class="font-medium">{{ event.type }}</span>
+          <span class="text-slate-500">{{ event.stage }}</span>
+          {% if event.payload %}<span class="text-slate-500">{{ event.payload }}</span>{% endif %}
+        </li>
+        {% endfor %}
+      </ol>
+    </div>
+  </section>
+
+  <section class="bg-white rounded-lg shadow">
+    <h2 class="font-semibold p-3 border-b">Transcript</h2>
+    <div class="p-4 space-y-2">
+      {% with messages = candidate.messages %}{% include "partials/bubbles.html" %}{% endwith %}
+    </div>
+  </section>
+</div>
+{% endblock %}

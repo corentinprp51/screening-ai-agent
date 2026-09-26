@@ -6,7 +6,15 @@ from typing import Protocol
 from pydantic import JsonValue
 
 from app.domain.flow import Action
-from app.domain.models import Candidate, CandidateState, Event, Extraction, Language, Message
+from app.domain.models import (
+    Candidate,
+    CandidateState,
+    Event,
+    Extraction,
+    Language,
+    Message,
+    Status,
+)
 
 
 class LLMPort(Protocol):
@@ -24,7 +32,13 @@ class LLMPort(Protocol):
 
 
 class CandidateRepository(Protocol):
+    def get(self, candidate_id: int) -> Candidate | None: ...
+
     def get_by_handle(self, client_id: str, handle: str) -> Candidate | None: ...
+
+    def list_candidates(self, client_id: str, status: Status | None = None) -> list[Candidate]:
+        """Most recent activity first."""
+        ...
 
     def save(self, candidate: Candidate) -> Candidate:
         """Insert or update; returns the candidate with its id."""
