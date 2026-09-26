@@ -3,10 +3,10 @@ from pathlib import Path
 
 from sqlalchemy import Engine
 from sqlalchemy.pool import StaticPool
-from sqlmodel import Session, SQLModel, create_engine, delete, select
+from sqlmodel import Session, SQLModel, col, create_engine, delete, select
 
 from app.adapters.persistence.tables import CandidateRow, EventRow, MessageRow
-from app.domain.models import Candidate, CandidateState, Event, Message
+from app.domain.models import Candidate, CandidateState, Event, Message, Status
 
 
 def create_sqlite_engine(url: str) -> Engine:
@@ -26,6 +26,21 @@ def create_sqlite_engine(url: str) -> Engine:
 class SqliteCandidateRepository:
     def __init__(self, engine: Engine) -> None:
         self._engine = engine
+
+    def get(self, candidate_id: int) -> Candidate | None:
+        with Session(self._engine) as session:
+            row = session.get(CandidateRow, candidate_id)
+            return _to_candidate(row) if row else None
+
+    def list_candidates(self, client_id: str, status: Status | None = None) -> list[Candidate]:
+        with Session(self._engine) as session:
+            query = select(CandidateRow).where(CandidateRow.client_id == client_id)
+            if status is not None:
+                query = query.where(CandidateRow.status == status)
+            rows = session.exec(
+                query.order_by(col(CandidateRow.updated_at).desc(), col(CandidateRow.id).desc())
+            ).all()
+            return [_to_candidate(row) for row in rows]
 
     def get_by_handle(self, client_id: str, handle: str) -> Candidate | None:
         with Session(self._engine) as session:

@@ -10,11 +10,17 @@ Language = Literal["es", "en"]
 
 # The value types a field can hold; grows with each new field type.
 FieldValue = str
+FieldStatus = Literal["empty", "incomplete", "valid", "needs_review"]
 
 
 class Status(StrEnum):
     IN_PROGRESS = "in_progress"
+    REJECTION_PROPOSED = "rejection_proposed"
     QUALIFIED = "qualified"
+    QUALIFIED_TO_REVIEW = "qualified_to_review"
+    REJECTED = "rejected"
+    WITHDRAWN = "withdrawn"
+    ABANDONED = "abandoned"
 
 
 # --- Client config (loaded from YAML by the config adapter) ---
@@ -53,9 +59,10 @@ class FieldState(BaseModel):
     """What the screening knows about one field.
 
     `incomplete` means one follow-up is pending for the `missing` part.
+    `needs_review` means a recruiter must check it; the screening moves on.
     """
 
-    status: Literal["empty", "incomplete", "valid"] = "empty"
+    status: FieldStatus = "empty"
     value: FieldValue | None = None
     raw_answer: str | None = None
     confidence: float | None = None
@@ -73,6 +80,9 @@ class CandidateState(BaseModel):
 
     def field(self, field_type: str) -> FieldState:
         return self.fields.get(field_type, FieldState())
+
+    def all_flags(self) -> list[str]:
+        return [flag for field in self.fields.values() for flag in field.flags]
 
 
 class Candidate(BaseModel):

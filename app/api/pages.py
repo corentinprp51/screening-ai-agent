@@ -5,11 +5,23 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app.api.deps import Screening
+from app.api.deps import Recruiter, Screening
 from app.application.screening_service import UnknownCandidate
+from app.domain.models import Status
 
 router = APIRouter(default_response_class=HTMLResponse)
 templates = Jinja2Templates(directory=Path(__file__).resolve().parents[1] / "web" / "templates")
+
+STATUS_LABELS = {
+    Status.IN_PROGRESS: "In progress",
+    Status.REJECTION_PROPOSED: "To confirm",
+    Status.QUALIFIED: "Qualified",
+    Status.QUALIFIED_TO_REVIEW: "Qualified to review",
+    Status.REJECTED: "Rejected",
+    Status.WITHDRAWN: "Withdrawn",
+    Status.ABANDONED: "Abandoned",
+}
+templates.env.globals["status_labels"] = STATUS_LABELS
 
 
 @router.get("/")
@@ -62,3 +74,19 @@ def chat_message(request: Request, handle: str, service: Screening, text: Annota
         "partials/bubbles.html",
         {"messages": [{"role": "candidate", "content": text}, {"role": "agent", "content": reply}]},
     )
+
+
+@router.get("/dashboard")
+def dashboard(request: Request, service: Recruiter, status: Status | None = None):
+    return templates.TemplateResponse(
+        request, "dashboard.html", {"rows": service.queue(status), "current": status}
+    )
+
+
+@router.get("/dashboard/candidates/{candidate_id}")
+def candidate_detail(request: Request, candidate_id: int, service: Recruiter):
+    try:
+        detail = service.detail(candidate_id)
+    except UnknownCandidate:
+        return HTMLResponse("Unknown candidate", status_code=404)
+    return templates.TemplateResponse(request, "candidate.html", {"candidate": detail})

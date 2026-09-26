@@ -8,7 +8,7 @@ Requires [uv](https://docs.astral.sh/uv/) and [Task](https://taskfile.dev/).
 
 ```
 task dev:install   # uv sync
-task dev:run       # web chat at http://localhost:8000/chat
+task dev:run       # web chat at http://localhost:8000/chat, dashboard at /dashboard
 task dev:cli       # the same screening in the terminal
 task dev:test
 ```
@@ -22,7 +22,7 @@ In v0 the FakeLLM does no language understanding: type canonical values (`yes`, 
 ```
 app/
   domain/        pure Python: models (state, extraction contract, config), fields (validators), flow (next_action)
-  application/   ports.py (LLMPort, CandidateRepository, Clock) + screening_service.py
+  application/   ports.py (LLMPort, CandidateRepository, Clock) + screening_service.py + recruiter_service.py
   adapters/      llm/fake_llm.py, persistence/ (SQLModel + SQLite), config/yaml_loader.py, clock.py
   api/           deps.py (composition root), json_routes.py (/api), pages.py (HTML + HTMX)
   web/templates/ Jinja2 pages and partials
@@ -37,3 +37,4 @@ A turn: LLM extraction → validation in code → state update → `next_action(
 - **The FakeLLM is a dumb echo.** It puts the raw message into the slot the pending action asks for and lets Pydantic coercion type it (`"yes"` → `True`); a failed coercion is an invalid answer. Replies are visible `[fake] …` placeholders. Tests can queue scripted extractions instead. No keywords or NLU, so the whole flow is exercised offline and v1 only swaps in a real adapter behind `LLMPort`.
 - **Consent declined is a hard delete.** The candidate, its messages and its events are deleted; the closing message is returned to the chat but not stored. It is not an outcome.
 - **A missing part gets one follow-up, then is accepted with a flag.** For the name, an answer to the surname follow-up that does not repeat the first name is taken as the surname(s) (`Ana` + `López García`).
+- **The queue is sorted by last activity until the priority score lands.** Status tabs cover every status; Rejection proposed is labelled "To confirm". The dashboard has no authentication in v0.

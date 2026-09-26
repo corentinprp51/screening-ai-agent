@@ -1,7 +1,8 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.api.deps import Screening
+from app.api.deps import Recruiter, Screening
+from app.application.recruiter_service import CandidateDetail, QueueRow
 from app.application.screening_service import UnknownCandidate
 from app.domain.models import Message, Status
 
@@ -56,3 +57,16 @@ def get_transcript(handle: str, service: Screening) -> TranscriptOut:
         stage=candidate.state.stage,
         messages=service.transcript(handle),
     )
+
+
+@router.get("/candidates")
+def list_candidates(service: Recruiter, status: Status | None = None) -> list[QueueRow]:
+    return service.queue(status)
+
+
+@router.get("/candidates/{candidate_id}")
+def get_candidate(candidate_id: int, service: Recruiter) -> CandidateDetail:
+    try:
+        return service.detail(candidate_id)
+    except UnknownCandidate as error:
+        raise HTTPException(404, "Unknown candidate") from error
