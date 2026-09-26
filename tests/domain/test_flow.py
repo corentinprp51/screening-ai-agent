@@ -32,6 +32,7 @@ CONFIG = ClientConfig(
     default_language="es",
     fields=[FieldConfig(type="name"), FieldConfig(type="schedule")],
     review_delay_hours=24,
+    call_within_hours=48,
     confidence_threshold=0.7,
     service_areas={"ES": {"Madrid": []}},
     scoring=Scoring(

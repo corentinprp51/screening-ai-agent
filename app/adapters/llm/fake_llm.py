@@ -4,7 +4,8 @@
   otherwise echoes the raw message into the slot the pending action asks for and lets
   Pydantic coercion type it ("yes" → True). A failed coercion yields an empty
   extraction, i.e. an invalid answer.
-- reply / summarize: visible `[fake] …` placeholders; the recap lists every field.
+- reply / summarize: visible `[fake] …` placeholders; the recap lists every field and the
+  summary names the status and the next action.
 - fail_next(call): the next call to that method raises, to exercise the failure path.
 """
 
@@ -80,7 +81,7 @@ class FakeLLM:
 
     def summarize(self, facts: dict[str, JsonValue], language: Language) -> str:
         self._maybe_fail("summarize")
-        return "[fake] summary"
+        return f"[fake] summary: {facts['status']}; next: {facts['next_action']}"
 
 
 def _recap_value(state: CandidateState, field: str) -> str:

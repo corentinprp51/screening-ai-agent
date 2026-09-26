@@ -1,7 +1,7 @@
 """The candidate side of a screening: applying and one turn per candidate message.
 
 Turn: extract (LLM) → validate (code) → update state → next_action() and priority score
-(code) → reply for that action (LLM) → persist.
+(code) → reply for that action (LLM) → summary when the questions stop (LLM) → persist.
 """
 
 import re
@@ -40,8 +40,10 @@ from app.domain.models import (
     Message,
     Place,
     Status,
+    Summary,
 )
 from app.domain.scoring import priority_score
+from app.domain.summary import SUMMARIZED_STATUSES, summary_facts
 
 
 class UnknownCandidate(LookupError):
@@ -53,6 +55,20 @@ def normalize_handle(phone: str) -> str:
     if not handle:
         raise ValueError("A phone number needs digits")
     return handle
+
+
+def write_summary(candidate: Candidate, config: ClientConfig, llm: LLMPort) -> Exception | None:
+    """Phrase the summary from facts computed by code and store both on the candidate.
+    On failure the text stays empty, the candidate is flagged and the error is returned."""
+    facts = summary_facts(candidate.status, candidate.state, config)
+    try:
+        text = llm.summarize(facts, config.default_language)
+    except Exception as error:
+        candidate.summary = Summary(facts=facts)
+        candidate.state.add_flag("llm_failure")
+        return error
+    candidate.summary = Summary(text=text, facts=facts)
+    return None
 
 
 class ScreeningService:
@@ -124,6 +140,8 @@ class ScreeningService:
                 self._record(candidate, "rejection_proposed", rule=action.reason, answer=answer)
             else:
                 self._record(candidate, "outcome", status=action.status)
+            if action.status in SUMMARIZED_STATUSES:
+                self._summarize(candidate)
         candidate.updated_at = self._clock.now()
         self._repo.save(candidate)
         self._send(candidate, reply)
@@ -135,6 +153,12 @@ class ScreeningService:
     def transcript(self, handle: str) -> list[Message]:
         candidate = self.candidate(handle)
         return self._repo.list_messages(candidate.id) if candidate else []
+
+    def _summarize(self, candidate: Candidate) -> None:
+        """A summary failure does not stop the turn: the reply is still sent."""
+        error = write_summary(candidate, self._config, self._llm)
+        if error:
+            self._record(candidate, "llm_failure", error=repr(error))
 
     def _after_close(self, candidate: Candidate, text: str) -> str:
         """The screening has stopped: store the message, flag it for the recruiter and

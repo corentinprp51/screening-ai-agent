@@ -10,6 +10,13 @@
   <span class="text-sm text-slate-500">stage: {{ candidate.stage }}</span>
 </div>
 
+{% if candidate.summary or candidate.next_action %}
+<div class="mb-4 rounded-lg bg-white shadow p-3 text-sm">
+  {% if candidate.next_action %}<p class="font-semibold">Next action: {{ candidate.next_action }}</p>{% endif %}
+  {% if candidate.summary %}<p class="mt-1 text-slate-700 whitespace-pre-line">{{ candidate.summary }}</p>{% endif %}
+</div>
+{% endif %}
+
 {% if candidate.rule %}
 <div class="mb-4 flex flex-wrap items-center gap-4 rounded-lg bg-red-50 border border-red-200 p-3 text-sm">
   <span>Failed rule: <strong>{{ candidate.rule }}</strong></span>

@@ -843,3 +843,67 @@ def test_an_unknown_place_still_without_a_city_goes_to_needs_review():
     candidate = service.candidate(HANDLE)
     assert candidate.state.fields["service_area"].status == "needs_review"
     assert candidate.status == Status.IN_PROGRESS
+
+
+QUALIFY = ["yes", "Ana López", "yes", "yes", "Madrid", "full_time", "evening", "2", "immediate"]
+
+
+def test_no_summary_while_the_questions_go_on():
+    service, _ = make_service()
+    service.apply(PHONE)
+    answer(service, *QUALIFY)
+
+    assert service.candidate(HANDLE).summary is None
+
+
+@pytest.mark.parametrize(
+    ("texts", "expected"),
+    [
+        ([*QUALIFY, "yes"], "[fake] summary: qualified; next: Call within 48 h"),
+        (
+            [*QUALIFY, "no", "no", "no"],
+            "[fake] summary: qualified_to_review; next: Check the answers: the recap was not "
+            "confirmed",
+        ),
+        (
+            ["yes", "Ana López", "no"],
+            "[fake] summary: rejection_proposed; next: Confirm or override the proposed rejection",
+        ),
+    ],
+)
+def test_a_summary_is_written_when_the_questions_stop(texts, expected):
+    service, _ = make_service()
+    service.apply(PHONE)
+    answer(service, *texts)
+
+    summary = service.candidate(HANDLE).summary
+    assert summary.text == expected
+    assert summary.facts["fields"]["name"] == "Ana López"
+
+
+def test_a_summary_is_written_on_an_opt_out():
+    service, _ = make_service(script=[Extraction(yes_no=True), Extraction(intent="opt_out")])
+    service.apply(PHONE)
+    answer(service, "sí", "stop")
+
+    summary = service.candidate(HANDLE).summary
+    assert (summary.text, summary.facts["status"]) == (
+        "[fake] summary: withdrawn; next: None",
+        "withdrawn",
+    )
+
+
+def test_a_summary_failure_keeps_the_facts_flags_the_candidate_and_the_turn_completes():
+    llm = FakeLLM()
+    service, repo = make_service(llm=llm)
+    service.apply(PHONE)
+    answer(service, *QUALIFY)
+    llm.fail_next("summarize")
+
+    assert service.handle_message(HANDLE, "yes") == "[fake] close:qualified"
+
+    candidate = service.candidate(HANDLE)
+    assert candidate.status == Status.QUALIFIED
+    assert (candidate.summary.text, candidate.summary.facts["status"]) == (None, "qualified")
+    assert "llm_failure" in candidate.state.flags
+    assert repo.list_events(candidate.id)[-1].type == "llm_failure"

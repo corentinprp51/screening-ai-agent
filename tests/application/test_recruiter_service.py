@@ -12,7 +12,7 @@ from app.application.recruiter_service import (
     RecruiterService,
 )
 from app.application.screening_service import ScreeningService, UnknownCandidate
-from app.domain.models import Status
+from app.domain.models import Extracted, Extraction, License, OwnVehicle, Status
 
 START = datetime(2026, 9, 26, 10, 0, tzinfo=UTC)
 
@@ -262,3 +262,66 @@ def test_an_llm_failure_on_override_changes_nothing_but_a_flag(services, llm):
     assert candidate.status == Status.REJECTION_PROPOSED
     assert candidate.state.overridden_knock_outs == []
     assert candidate.state.flags == ["llm_failure"]
+
+
+def test_the_queue_and_the_detail_show_the_summary_and_the_next_action(services):
+    screening, recruiter, _ = services
+    qualify(screening, "600000001", "Ana López")
+
+    [row] = recruiter.queue()
+    detail = recruiter.detail(row.id)
+
+    for view in (row, detail):
+        assert (view.summary, view.next_action) == (
+            "[fake] summary: qualified; next: Call within 48 h",
+            "Call within 48 h",
+        )
+
+
+def test_confirming_a_rejection_writes_no_new_summary(services):
+    screening, recruiter, _ = services
+    candidate_id = propose_rejection(screening, "600000001")
+    proposed = recruiter.detail(candidate_id).summary
+
+    recruiter.confirm_rejection(candidate_id)
+
+    detail = recruiter.detail(candidate_id)
+    assert (detail.summary, detail.next_action) == (proposed, None)
+
+
+def test_a_screening_resumed_by_an_override_is_summarized_again_when_it_stops(services):
+    screening, recruiter, _ = services
+    candidate_id = propose_rejection(screening, "600000001")
+
+    recruiter.override_rejection(candidate_id)
+    assert recruiter.detail(candidate_id).summary is None
+
+    for text in ["yes", "Madrid", "full_time", "evening", "2", "immediate", "yes"]:
+        screening.handle_message("600000001", text)
+    assert recruiter.detail(candidate_id).summary == (
+        "[fake] summary: qualified; next: Call within 48 h"
+    )
+
+
+def test_an_override_onto_another_failed_knock_out_writes_a_new_summary(services, llm):
+    screening, recruiter, _ = services
+    screening.apply("600000001")
+    llm.queue(
+        Extraction(yes_no=True),
+        Extraction(
+            name=Extracted(value="Ana López", raw_answer="Ana López", confidence=1.0),
+            license=Extracted(value=License(has_license=False), raw_answer="no", confidence=1.0),
+            own_vehicle=Extracted(
+                value=OwnVehicle(owns_vehicle=False), raw_answer="no", confidence=1.0
+            ),
+        ),
+    )
+    for text in ["sí", "Ana López, sin carnet ni coche"]:
+        screening.handle_message("600000001", text)
+    candidate_id = screening.candidate("600000001").id
+
+    recruiter.override_rejection(candidate_id)
+
+    candidate = screening.candidate("600000001")
+    assert candidate.status == Status.REJECTION_PROPOSED
+    assert candidate.summary.facts["rule"] == "no_own_vehicle"
