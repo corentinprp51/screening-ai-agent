@@ -1,8 +1,15 @@
+from collections.abc import Callable
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.api.deps import Recruiter, Screening
-from app.application.recruiter_service import CandidateDetail, QueueRow
+from app.application.recruiter_service import (
+    CandidateDetail,
+    LLMUnavailable,
+    NotRejectionProposed,
+    QueueRow,
+)
 from app.application.screening_service import UnknownCandidate
 from app.domain.models import Message, Status
 
@@ -70,3 +77,27 @@ def get_candidate(candidate_id: int, service: Recruiter) -> CandidateDetail:
         return service.detail(candidate_id)
     except UnknownCandidate as error:
         raise HTTPException(404, "Unknown candidate") from error
+
+
+@router.post("/candidates/{candidate_id}/confirm-rejection")
+def confirm_rejection(candidate_id: int, service: Recruiter) -> CandidateDetail:
+    return _recruiter_action(service.confirm_rejection, candidate_id, service)
+
+
+@router.post("/candidates/{candidate_id}/override-rejection")
+def override_rejection(candidate_id: int, service: Recruiter) -> CandidateDetail:
+    return _recruiter_action(service.override_rejection, candidate_id, service)
+
+
+def _recruiter_action(
+    action: Callable[[int], None], candidate_id: int, service: Recruiter
+) -> CandidateDetail:
+    try:
+        action(candidate_id)
+    except UnknownCandidate as error:
+        raise HTTPException(404, "Unknown candidate") from error
+    except NotRejectionProposed as error:
+        raise HTTPException(409, "The candidate is not in Rejection proposed") from error
+    except LLMUnavailable as error:
+        raise HTTPException(503, "The message could not be written, try again") from error
+    return service.detail(candidate_id)

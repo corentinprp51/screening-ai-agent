@@ -147,6 +147,32 @@ def test_next_action_checks_the_knock_outs_before_walking_the_fields(fields, exp
     assert next_action(state, KNOCK_OUT_CONFIG) == expected
 
 
+@pytest.mark.parametrize(
+    ("fields", "overridden", "expected"),
+    [
+        ({"name": VALID_NAME, "license": NO_LICENSE}, ["no_license"], Ask("own_vehicle", 0)),
+        (
+            {"name": VALID_NAME, "license": NO_LICENSE, "own_vehicle": NO_VEHICLE},
+            ["no_license"],
+            Close(
+                status=Status.REJECTION_PROPOSED,
+                reason="no_own_vehicle",
+                field="own_vehicle",
+                within_hours=24,
+            ),
+        ),
+        (
+            {"name": VALID_NAME, "license": NO_LICENSE, "own_vehicle": NO_VEHICLE},
+            ["no_license", "no_own_vehicle"],
+            Ask("schedule", 0),
+        ),
+    ],
+)
+def test_next_action_ignores_overridden_knock_outs(fields, overridden, expected):
+    state = CandidateState(consent=True, fields=fields, overridden_knock_outs=overridden)
+    assert next_action(state, KNOCK_OUT_CONFIG) == expected
+
+
 def test_a_no_on_a_field_without_the_knock_out_flag_does_not_propose_a_rejection():
     config = CONFIG.model_copy(
         update={"fields": [FieldConfig(type="license"), FieldConfig(type="schedule")]}

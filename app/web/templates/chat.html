@@ -5,7 +5,8 @@
   <h1 class="text-xl font-semibold">{{ candidate.name or candidate.handle }}</h1>
   <a href="/chat" class="text-sm text-slate-500 underline">New application</a>
 </div>
-<div id="messages" class="bg-white rounded-lg shadow p-4 space-y-2 min-h-64">
+<div id="messages" class="bg-white rounded-lg shadow p-4 space-y-2 min-h-64"
+     hx-get="/chat/{{ candidate.handle }}/messages" hx-trigger="every 3s" hx-swap="innerHTML">
   {% include "partials/bubbles.html" %}
 </div>
 <form class="mt-3 flex gap-2"

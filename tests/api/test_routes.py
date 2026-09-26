@@ -27,7 +27,9 @@ def client():
         repo=repo,
         clock=FixedClock(datetime(2026, 9, 26, tzinfo=UTC)),
     )
-    recruiter = RecruiterService(config=config, repo=repo)
+    recruiter = RecruiterService(
+        config=config, llm=FakeLLM(), repo=repo, clock=FixedClock(datetime(2026, 9, 26, tzinfo=UTC))
+    )
     app.dependency_overrides[get_screening_service] = lambda: screening
     app.dependency_overrides[get_recruiter_service] = lambda: recruiter
     yield TestClient(app)
@@ -115,3 +117,53 @@ def test_page_candidate_detail(client):
 
 def test_page_unknown_candidate(client):
     assert client.get("/dashboard/candidates/999").status_code == 404
+
+
+def test_page_chat_messages_polls_the_transcript(client):
+    client.post("/chat", data={"phone": HANDLE})
+    response = client.get(f"/chat/{HANDLE}/messages")
+    assert response.status_code == 200
+    assert "Lucía" in response.text
+
+
+def proposed_rejection_id(client) -> int:
+    """A candidate with no license, in Rejection proposed."""
+    id_ = candidate_id(client)
+    for text in ["yes", "Ana López", "no"]:
+        client.post(f"/api/screenings/{HANDLE}/messages", json={"text": text})
+    return id_
+
+
+def test_api_confirm_rejection(client):
+    response = client.post(f"/api/candidates/{proposed_rejection_id(client)}/confirm-rejection")
+    assert response.status_code == 200
+    assert response.json()["status"] == "rejected"
+
+
+def test_api_override_rejection(client):
+    response = client.post(f"/api/candidates/{proposed_rejection_id(client)}/override-rejection")
+    assert response.status_code == 200
+    assert response.json()["status"] == "in_progress"
+
+
+def test_api_confirm_is_refused_outside_rejection_proposed(client):
+    response = client.post(f"/api/candidates/{candidate_id(client)}/confirm-rejection")
+    assert response.status_code == 409
+
+
+def test_page_to_confirm_tab_shows_the_decision_buttons(client):
+    proposed_rejection_id(client)
+    response = client.get("/dashboard", params={"status": "rejection_proposed"})
+    assert response.status_code == 200
+    assert "no_license" in response.text and "Override" in response.text
+
+
+def test_page_override_redirects_back(client):
+    id_ = proposed_rejection_id(client)
+    response = client.post(
+        f"/dashboard/candidates/{id_}/override-rejection",
+        data={"back": "/dashboard?status=rejection_proposed"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/dashboard?status=rejection_proposed"

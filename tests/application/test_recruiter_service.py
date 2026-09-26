@@ -6,7 +6,11 @@ from app.adapters.clock import FixedClock
 from app.adapters.config.yaml_loader import load_client_config
 from app.adapters.llm.fake_llm import FakeLLM
 from app.adapters.persistence.sqlite_repo import SqliteCandidateRepository, create_sqlite_engine
-from app.application.recruiter_service import RecruiterService
+from app.application.recruiter_service import (
+    LLMUnavailable,
+    NotRejectionProposed,
+    RecruiterService,
+)
 from app.application.screening_service import ScreeningService, UnknownCandidate
 from app.domain.models import Status
 
@@ -14,12 +18,18 @@ START = datetime(2026, 9, 26, 10, 0, tzinfo=UTC)
 
 
 @pytest.fixture
-def services():
+def llm():
+    return FakeLLM()
+
+
+@pytest.fixture
+def services(llm):
     config = load_client_config("grupo_sazon")
     repo = SqliteCandidateRepository(create_sqlite_engine("sqlite://"))
     clock = FixedClock(START)
-    screening = ScreeningService(config=config, llm=FakeLLM(), repo=repo, clock=clock)
-    return screening, RecruiterService(config=config, repo=repo), clock
+    screening = ScreeningService(config=config, llm=llm, repo=repo, clock=clock)
+    recruiter = RecruiterService(config=config, llm=llm, repo=repo, clock=clock)
+    return screening, recruiter, clock
 
 
 def qualify(screening: ScreeningService, phone: str, name: str) -> None:
@@ -114,3 +124,90 @@ def test_the_detail_of_an_unknown_candidate_raises(services):
 
     with pytest.raises(UnknownCandidate):
         recruiter.detail(999)
+
+
+def propose_rejection(screening: ScreeningService, phone: str) -> int:
+    """A candidate with no license, in Rejection proposed; returns their id."""
+    screening.apply(phone)
+    for text in ["yes", "Ana López", "no"]:
+        screening.handle_message(phone, text)
+    return screening.candidate(phone).id
+
+
+def test_the_to_confirm_tab_shows_the_rule_and_the_answer(services):
+    screening, recruiter, _ = services
+    screening.apply("600000001")
+    propose_rejection(screening, "600000002")
+
+    [row] = recruiter.queue(Status.REJECTION_PROPOSED)
+
+    assert (row.handle, row.rule, row.answer) == ("600000002", "no_license", "no")
+    assert (recruiter.detail(row.id).rule, recruiter.detail(row.id).answer) == ("no_license", "no")
+
+
+def test_confirming_rejects_the_candidate_and_sends_the_rejection_message(services):
+    screening, recruiter, _ = services
+    candidate_id = propose_rejection(screening, "600000001")
+
+    recruiter.confirm_rejection(candidate_id)
+
+    detail = recruiter.detail(candidate_id)
+    assert detail.status == Status.REJECTED
+    assert detail.messages[-1].content == "[fake] close:no_license"
+    assert (detail.events[-1].type, detail.events[-1].payload) == (
+        "outcome",
+        {"status": "rejected", "rule": "no_license"},
+    )
+    assert (detail.rule, detail.answer) == (None, None)
+
+
+def test_overriding_resumes_the_screening_with_the_next_question(services):
+    screening, recruiter, _ = services
+    candidate_id = propose_rejection(screening, "600000001")
+
+    recruiter.override_rejection(candidate_id)
+
+    detail = recruiter.detail(candidate_id)
+    assert (detail.status, detail.stage) == (Status.IN_PROGRESS, "own_vehicle")
+    assert detail.messages[-1].content == "[fake] ask:own_vehicle (attempt 0)"
+    assert (detail.events[-1].type, detail.events[-1].payload) == (
+        "knock_out_overridden",
+        {"rule": "no_license"},
+    )
+    assert screening.handle_message("600000001", "yes") == "[fake] ask:availability (attempt 0)"
+
+
+def test_a_different_knock_out_after_an_override_proposes_a_rejection_again(services):
+    screening, recruiter, _ = services
+    candidate_id = propose_rejection(screening, "600000001")
+    recruiter.override_rejection(candidate_id)
+
+    screening.handle_message("600000001", "no")
+
+    [row] = recruiter.queue(Status.REJECTION_PROPOSED)
+    assert (row.id, row.rule, row.answer) == (candidate_id, "no_own_vehicle", "no")
+
+
+def test_confirm_and_override_are_refused_outside_rejection_proposed(services):
+    screening, recruiter, _ = services
+    qualify(screening, "600000001", "Ana López")
+    candidate_id = screening.candidate("600000001").id
+
+    with pytest.raises(NotRejectionProposed):
+        recruiter.confirm_rejection(candidate_id)
+    with pytest.raises(NotRejectionProposed):
+        recruiter.override_rejection(candidate_id)
+
+
+def test_an_llm_failure_on_override_changes_nothing_but_a_flag(services, llm):
+    screening, recruiter, _ = services
+    candidate_id = propose_rejection(screening, "600000001")
+    llm.fail_next("reply")
+
+    with pytest.raises(LLMUnavailable):
+        recruiter.override_rejection(candidate_id)
+
+    candidate = screening.candidate("600000001")
+    assert candidate.status == Status.REJECTION_PROPOSED
+    assert candidate.state.overridden_knock_outs == []
+    assert candidate.state.flags == ["llm_failure"]
