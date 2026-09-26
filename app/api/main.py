@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -11,6 +12,9 @@ async def lifespan(app: FastAPI):
     get_screening_service()  # load the config and create the tables at startup
     yield
 
+
+logging.basicConfig()
+logging.getLogger("app").setLevel(logging.INFO)  # the token usage of each LLM call
 
 app = FastAPI(title="Candidate Screening", lifespan=lifespan)
 app.include_router(json_routes.router)
