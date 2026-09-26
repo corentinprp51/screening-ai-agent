@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from app.application.ports import CandidateRepository
 from app.application.screening_service import UnknownCandidate
+from app.domain.fields import format_value
 from app.domain.models import ClientConfig, Event, FieldStatus, FieldValue, Message, Status
 
 
@@ -24,6 +25,7 @@ class QueueRow(BaseModel):
 class FieldView(BaseModel):
     field: str
     value: FieldValue | None
+    display: str
     raw_answer: str | None
     confidence: float | None
     verdict: FieldStatus
@@ -74,6 +76,7 @@ class RecruiterService:
                 FieldView(
                     field=field_config.type,
                     value=field.value,
+                    display=format_value(field.value),
                     raw_answer=field.raw_answer,
                     confidence=field.confidence,
                     verdict=field.status,

@@ -1,15 +1,30 @@
 """Domain models: candidate state, the extraction contract and client config."""
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, JsonValue
+from pydantic import BaseModel, BeforeValidator, Field, JsonValue, model_validator
 
 Language = Literal["es", "en"]
+FieldType = Literal["name", "availability", "schedule", "experience", "start_date"]
+AvailabilityOption = Literal["full_time", "part_time", "weekends"]
+ScheduleOption = Literal["morning", "afternoon", "evening", "flexible"]
 
-# The value types a field can hold; grows with each new field type.
-FieldValue = str
+
+class Experience(BaseModel):
+    years: int
+    platforms: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_years(cls, data: JsonValue) -> JsonValue:
+        """A bare number is the years ("2" → 2 years)."""
+        return {"years": data} if isinstance(data, int | str) else data
+
+
+# The value types a field can hold. A start date is stored as "immediate" or an ISO date.
+FieldValue = str | list[str] | Experience
 FieldStatus = Literal["empty", "incomplete", "valid", "needs_review"]
 
 
@@ -32,7 +47,7 @@ class Persona(BaseModel):
 
 
 class FieldConfig(BaseModel):
-    type: Literal["name"]
+    type: FieldType
 
 
 class Templates(BaseModel):
@@ -113,6 +128,14 @@ class Event(BaseModel):
 # --- Extraction contract (the LLM output type) ---
 
 
+def _split_words(value: JsonValue) -> JsonValue:
+    """Several options in one string ("full_time, weekends") → a list."""
+    return value.replace(",", " ").split() if isinstance(value, str) else value
+
+
+Availability = Annotated[list[AvailabilityOption], BeforeValidator(_split_words)]
+
+
 class Extracted[T](BaseModel):
     value: T
     raw_answer: str
@@ -126,3 +149,7 @@ class Extraction(BaseModel):
     intent: Literal["answer", "opt_out"] = "answer"
     yes_no: bool | None = None
     name: Extracted[str] | None = None
+    availability: Extracted[Availability] | None = None
+    schedule: Extracted[ScheduleOption] | None = None
+    experience: Extracted[Experience] | None = None
+    start_date: Extracted[Literal["immediate"] | date] | None = None

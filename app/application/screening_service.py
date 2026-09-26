@@ -64,7 +64,7 @@ class ScreeningService:
         candidate.state.language = extraction.language
         self._store(candidate, "candidate", text)
 
-        self._apply_extraction(candidate, pending, extraction)
+        self._apply_extraction(candidate, pending, extraction, text)
         action = next_action(candidate.state, self._config)
         reply = self._llm.reply(action, candidate.state, candidate.state.language)
 
@@ -90,7 +90,7 @@ class ScreeningService:
         return self._repo.list_messages(candidate.id) if candidate else []
 
     def _apply_extraction(
-        self, candidate: Candidate, pending: Action, extraction: Extraction
+        self, candidate: Candidate, pending: Action, extraction: Extraction, text: str
     ) -> None:
         """Validate what was extracted for the pending action and update the state."""
         state = candidate.state
@@ -102,21 +102,32 @@ class ScreeningService:
                     self._record(candidate, "consent_given")
             case Ask() | FollowUp():
                 for field_config in self._config.fields:
-                    self._apply_field(candidate, field_config.type, extraction, pending)
+                    self._apply_field(candidate, field_config.type, extraction, pending, text)
             case Recap():
                 state.recap_confirmed = extraction.yes_no is True
 
     def _apply_field(
-        self, candidate: Candidate, field_type: str, extraction: Extraction, pending: Action
+        self,
+        candidate: Candidate,
+        field_type: str,
+        extraction: Extraction,
+        pending: Action,
+        text: str,
     ) -> None:
+        """Validate one field. Attempts are only used by the question asked: an invalid
+        answer volunteered for another field is ignored."""
         extracted = getattr(extraction, field_type)
         current = candidate.state.field(field_type)
+        asked = isinstance(pending, Ask | FollowUp) and pending.field == field_type
         if extracted is not None:
-            verdict = VALIDATORS[field_type](extracted.value, current)
+            verdict = VALIDATORS[field_type](extracted.value, current, self._clock.now().date())
+            if verdict.status == "invalid" and not asked:
+                return
             updated = update_field(current, verdict, extracted.raw_answer, extracted.confidence)
-        elif pending == FollowUp(field_type, missing=current.missing):
-            # An unanswered follow-up still uses up the one follow-up.
-            updated = update_field(current, INVALID)
+        elif asked:
+            # Nothing usable for the question asked (e.g. a failed coercion): an invalid
+            # answer, and an unanswered follow-up still uses up the one follow-up.
+            updated = update_field(current, INVALID, raw_answer=text)
         else:
             return
         candidate.state.fields[field_type] = updated
@@ -124,6 +135,8 @@ class ScreeningService:
             if field_type == "name":
                 candidate.name = updated.value
             self._record(candidate, "field_captured", field=field_type)
+        elif updated.status == "needs_review":
+            self._record(candidate, "field_needs_review", field=field_type)
 
     def _get(self, handle: str) -> Candidate:
         candidate = self.candidate(handle)
