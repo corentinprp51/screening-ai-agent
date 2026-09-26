@@ -1,7 +1,9 @@
 """The three ports. Adapters implement them; the services depend only on them."""
 
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Protocol
+
+from pydantic import JsonValue
 
 from app.domain.flow import Action
 from app.domain.models import Candidate, CandidateState, Event, Extraction, Language, Message
@@ -16,7 +18,7 @@ class LLMPort(Protocol):
         """Write the message for an action chosen by code."""
         ...
 
-    def summarize(self, facts: dict[str, Any], language: Language) -> str:
+    def summarize(self, facts: dict[str, JsonValue], language: Language) -> str:
         """Phrase a recruiter summary from facts computed by code."""
         ...
 

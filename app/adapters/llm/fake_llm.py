@@ -6,9 +6,7 @@
 - reply / summarize: visible `[fake] …` placeholders.
 """
 
-from typing import Any
-
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 
 from app.domain.flow import Action, Ask, Close, FollowUp, Greet, Recap
 from app.domain.models import CandidateState, Extraction, Language
@@ -23,7 +21,7 @@ class FakeLLM:
             return self._script.pop(0)
         match action:
             case Greet() | Recap():
-                data: dict[str, Any] = {"yes_no": message.strip()}
+                data: dict[str, JsonValue] = {"yes_no": message.strip()}
             case Ask(field=field) | FollowUp(field=field):
                 data = {field: {"value": message, "raw_answer": message, "confidence": 1.0}}
             case _:
@@ -47,5 +45,5 @@ class FakeLLM:
                 label = f"close:{reason or status}"
         return f"[fake] {label}"
 
-    def summarize(self, facts: dict[str, Any], language: Language) -> str:
+    def summarize(self, facts: dict[str, JsonValue], language: Language) -> str:
         return "[fake] summary"

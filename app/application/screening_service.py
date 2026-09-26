@@ -5,7 +5,9 @@ Turn: extract (LLM) → validate (code) → update state → next_action() (code
 """
 
 import re
-from typing import Any, Literal
+from typing import Literal
+
+from pydantic import JsonValue
 
 from app.application.ports import CandidateRepository, Clock, LLMPort
 from app.domain.fields import INVALID, VALIDATORS, update_field
@@ -145,7 +147,7 @@ class ScreeningService:
             ),
         )
 
-    def _record(self, candidate: Candidate, event_type: str, **payload: Any) -> None:
+    def _record(self, candidate: Candidate, event_type: str, **payload: JsonValue) -> None:
         self._repo.add_event(
             candidate.id,
             Event(

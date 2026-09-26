@@ -60,6 +60,7 @@ LLM provider: TBD, set through config, behind `LLMPort`.
 - Agent messages: one question, at most 2 sentences, in the language of the candidate's latest message.
 - Frontend: server-rendered Jinja2 + HTMX, Tailwind via CDN, no Node build step.
 - Git: use always conventional commits
+- No `typing.Any` in `app/` (enforced by ruff TID251): use a precise type, e.g. `pydantic.JsonValue` for JSON data.
 - Before committing, run `task dev:format` and `task dev:lint`; commit only when both pass (use `task dev:lint:fix` for auto-fixable issues).
 
 ## Build order Suggestion

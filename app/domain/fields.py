@@ -3,9 +3,9 @@
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Literal
 
-from app.domain.models import FieldState
+from app.domain.models import FieldState, FieldValue
 
 # Unicode letter runs joined by a single space, hyphen or apostrophe.
 NAME_PATTERN = re.compile(r"[^\W\d_]+(?:[ '\-][^\W\d_]+)*")
@@ -14,7 +14,7 @@ NAME_PATTERN = re.compile(r"[^\W\d_]+(?:[ '\-][^\W\d_]+)*")
 @dataclass(frozen=True)
 class Verdict:
     status: Literal["valid", "incomplete", "invalid"]
-    value: Any = None
+    value: FieldValue | None = None
     missing: str | None = None
     flags: list[str] = field(default_factory=list)
 
@@ -37,7 +37,7 @@ def validate_name(answer: str, current: FieldState) -> Verdict:
     return Verdict("valid", value=name)
 
 
-VALIDATORS: dict[str, Callable[[Any, FieldState], Verdict]] = {
+VALIDATORS: dict[str, Callable[[FieldValue, FieldState], Verdict]] = {
     "name": validate_name,
 }
 

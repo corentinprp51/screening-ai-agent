@@ -2,11 +2,14 @@
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, JsonValue
 
 Language = Literal["es", "en"]
+
+# The value types a field can hold; grows with each new field type.
+FieldValue = str
 
 
 class Status(StrEnum):
@@ -53,7 +56,7 @@ class FieldState(BaseModel):
     """
 
     status: Literal["empty", "incomplete", "valid"] = "empty"
-    value: Any = None
+    value: FieldValue | None = None
     raw_answer: str | None = None
     confidence: float | None = None
     missing: str | None = None
@@ -93,7 +96,7 @@ class Message(BaseModel):
 class Event(BaseModel):
     type: str
     stage: str
-    payload: dict[str, Any] = Field(default_factory=dict)
+    payload: dict[str, JsonValue] = Field(default_factory=dict)
     created_at: datetime
 
 
