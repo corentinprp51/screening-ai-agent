@@ -3,7 +3,8 @@
 - extract: `Extraction` as output type, at temperature 0; an invalid output gets one
   retry with the validation error fed back.
 - reply / summarize: text, at a slightly higher temperature. A reply breaking the message
-  rules gets one retry with the reason fed back.
+  rules, or a summary longer than 3 lines or 600 characters, gets one retry with the
+  reason fed back.
 - Synchronous, with a fresh OpenAI client per call (ADR 0002). Every error (a timeout,
   an API error, a second invalid output) reaches the service, which sends the fallback.
 """
@@ -35,6 +36,8 @@ EXTRACT_TEMPERATURE = 0.0
 WRITE_TEMPERATURE = 0.4
 MAX_MESSAGE_CHARS = 1000  # a longer candidate message is cut before it reaches the prompt
 MESSAGE_TAG = "candidate_message"
+MAX_SUMMARY_LINES = 3
+MAX_SUMMARY_CHARS = 600
 LANGUAGE_NAMES: dict[Language, str] = {"es": "Spanish", "en": "English"}
 MAX_REPLY_CHARS = 300
 MAX_REPLY_SENTENCES = 2
@@ -67,7 +70,8 @@ class PydanticAILLM:
         self._extractor = Agent(output_type=Extraction, retries={"output": 1})
         self._replier = Agent(output_type=str, deps_type=Action, retries={"output": 1})
         self._replier.output_validator(_check_reply)
-        self._writer = Agent(output_type=str)
+        self._summarizer = Agent(output_type=str, retries={"output": 1})
+        self._summarizer.output_validator(_check_summary)
 
     def extract(
         self,
@@ -115,9 +119,11 @@ class PydanticAILLM:
 
     def summarize(self, facts: dict[str, JsonValue], language: Language) -> str:
         prompt = _prompts.get_template("summarize.md").render(
-            facts=facts, language=LANGUAGE_NAMES[language]
+            facts=facts,
+            language=LANGUAGE_NAMES[language],
+            max_chars=MAX_SUMMARY_CHARS,
         )
-        return self._run("summarize", self._writer, prompt, WRITE_TEMPERATURE)
+        return self._run("summarize", self._summarizer, prompt, WRITE_TEMPERATURE)
 
     def _run[D, T](
         self, call: str, agent: Agent[D, T], prompt: str, temperature: float, deps: D | None = None
@@ -135,6 +141,22 @@ class PydanticAILLM:
         )
         logger.info("llm %s usage: %s", call, result.usage)
         return result.output
+
+
+def _check_summary(summary: str) -> str:
+    """The summary fits the dashboard, and is stored without its blank lines."""
+    lines = [line.strip() for line in summary.splitlines() if line.strip()]
+    summary = "\n".join(lines)
+    if len(lines) > MAX_SUMMARY_LINES:
+        raise ModelRetry(
+            f"The summary has {len(lines)} lines: write at most {MAX_SUMMARY_LINES} lines."
+        )
+    if len(summary) > MAX_SUMMARY_CHARS:
+        raise ModelRetry(
+            f"The summary has {len(summary)} characters: "
+            f"write at most {MAX_SUMMARY_CHARS} characters."
+        )
+    return summary
 
 
 def _check_reply(ctx: RunContext[Action], reply: str) -> str:
