@@ -22,3 +22,11 @@ templates:
       Hi! I'm {agent_name}, the virtual hiring assistant for {client_name} 👋
       I'm writing about your delivery driver application: it takes 2 minutes and a recruiter reviews every profile.
       Shall we start?
+  # Sent when an LLM call fails; the next message gets the same question again.
+  fallback:
+    es: Perdona, he tenido un problema técnico. ¿Me lo puedes repetir?
+    en: Sorry, I had a technical problem. Could you say that again?
+  # Sent to any message received once the screening has stopped.
+  after_close:
+    es: Gracias por tu mensaje, un reclutador lo revisará.
+    en: Thanks for your message, a recruiter will review it.
