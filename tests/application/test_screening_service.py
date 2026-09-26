@@ -501,3 +501,193 @@ def test_a_clear_answer_to_the_shared_vehicle_follow_up_settles_the_field():
     assert service.handle_message(HANDLE, "no") == (
         "[fake] close:no_own_vehicle (reply within 24 h)"
     )
+
+
+def test_an_expired_license_gets_one_follow_up_then_proposes_a_rejection():
+    service, _ = make_service()
+    service.apply(PHONE)
+    answer(service, "yes", "Ana López")
+
+    assert service.handle_message(HANDLE, "expired") == "[fake] follow_up:license (validity)"
+    assert service.handle_message(HANDLE, "pending") == (
+        "[fake] close:no_license (reply within 24 h)"
+    )
+    assert service.candidate(HANDLE).status == Status.REJECTION_PROPOSED
+
+
+def test_an_unclear_answer_to_the_license_follow_up_is_treated_as_no():
+    service, _ = make_service()
+    service.apply(PHONE)
+    answer(service, "yes", "Ana López", "pending")
+
+    assert service.handle_message(HANDLE, "no sé") == (
+        "[fake] close:no_license (reply within 24 h)"
+    )
+
+
+def test_a_license_confirmed_valid_after_the_follow_up_continues():
+    service, _ = make_service()
+    service.apply(PHONE)
+    answer(service, "yes", "Ana López", "expired")
+
+    assert service.handle_message(HANDLE, "yes") == "[fake] ask:own_vehicle (attempt 0)"
+
+
+UNSURE_NAME = Extraction(name=Extracted(value="Ana López", raw_answer="ana lopes", confidence=0.5))
+
+
+def test_a_value_below_the_confidence_threshold_is_confirmed_before_it_is_kept():
+    service, _ = make_service(script=[Extraction(yes_no=True), UNSURE_NAME])
+    service.apply(PHONE)
+    service.handle_message(HANDLE, "sí")
+
+    assert service.handle_message(HANDLE, "ana lopes") == "[fake] confirm:name=Ana López"
+    assert service.candidate(HANDLE).state.fields["name"].status == "empty"
+    assert service.handle_message(HANDLE, "yes") == "[fake] ask:license (attempt 0)"
+
+    candidate = service.candidate(HANDLE)
+    assert candidate.name == "Ana López"
+    assert (candidate.state.fields["name"].status, candidate.state.fields["name"].unconfirmed) == (
+        "valid",
+        None,
+    )
+
+
+def test_an_unsure_value_the_candidate_denies_uses_an_attempt_and_is_asked_again():
+    service, _ = make_service(script=[Extraction(yes_no=True), UNSURE_NAME])
+    service.apply(PHONE)
+    answer(service, "sí", "ana lopes")
+
+    assert service.handle_message(HANDLE, "no") == "[fake] ask:name (attempt 1)"
+    name = service.candidate(HANDLE).state.fields["name"]
+    assert (name.status, name.value, name.attempts, name.unconfirmed) == ("empty", None, 1, None)
+
+
+NO_LICENSE_AFTER_ALL = Extraction(
+    license=Extracted(value=License(has_license=False), raw_answer="no tengo", confidence=1.0)
+)
+
+
+def test_a_confirmed_correction_overwrites_the_value_and_reruns_the_knock_outs():
+    llm = FakeLLM()
+    service, repo = make_service(llm=llm)
+    service.apply(PHONE)
+    answer(service, "yes", "Ana López", "yes", "yes")
+    llm.queue(NO_LICENSE_AFTER_ALL)
+
+    assert service.handle_message(HANDLE, "perdón, no tengo carnet") == (
+        "[fake] confirm:license=no"
+    )
+    assert service.handle_message(HANDLE, "yes") == "[fake] close:no_license (reply within 24 h)"
+
+    candidate = service.candidate(HANDLE)
+    assert candidate.status == Status.REJECTION_PROPOSED
+    assert candidate.state.fields["license"].raw_answer == "no tengo"
+    assert "field_corrected" in [e.type for e in repo.list_events(candidate.id)]
+
+
+def test_a_denied_correction_keeps_the_previous_value_and_uses_no_attempt():
+    llm = FakeLLM()
+    service, _ = make_service(llm=llm)
+    service.apply(PHONE)
+    answer(service, "yes", "Ana López", "yes", "yes")
+    llm.queue(NO_LICENSE_AFTER_ALL)
+    service.handle_message(HANDLE, "perdón, no tengo carnet")
+
+    assert service.handle_message(HANDLE, "no") == "[fake] ask:availability (attempt 0)"
+    license_ = service.candidate(HANDLE).state.fields["license"]
+    assert (license_.value, license_.unconfirmed) == (License(has_license=True), None)
+
+
+def test_the_same_value_again_is_not_a_correction():
+    llm = FakeLLM()
+    service, _ = make_service(llm=llm)
+    service.apply(PHONE)
+    answer(service, "yes", "Ana López")
+    llm.queue(
+        Extraction(
+            name=Extracted(value="Ana López", raw_answer="Ana López", confidence=1.0),
+            license=Extracted(value=License(has_license=True), raw_answer="sí", confidence=1.0),
+        )
+    )
+
+    assert service.handle_message(HANDLE, "Ana López, sí") == "[fake] ask:own_vehicle (attempt 0)"
+
+
+def test_a_correction_at_the_recap_is_confirmed_then_a_new_recap_is_shown():
+    llm = FakeLLM()
+    service, _ = make_service(llm=llm)
+    service.apply(PHONE)
+    answer(service, "yes", "Ana López", "yes", "yes", "full_time", "evening", "2", "immediate")
+    llm.queue(Extraction(schedule=Extracted(value="morning", raw_answer="mañanas", confidence=1.0)))
+
+    assert service.handle_message(HANDLE, "no, prefiero mañanas") == (
+        "[fake] confirm:schedule=morning"
+    )
+    assert service.handle_message(HANDLE, "yes") == RECAP.replace("evening", "morning")
+    assert service.handle_message(HANDLE, "yes") == "[fake] close:qualified"
+
+
+def test_a_recap_no_without_a_correction_asks_what_to_change_then_ends_to_review():
+    service, _ = make_service()
+    service.apply(PHONE)
+    answer(service, "yes", "Ana López", "yes", "yes", "full_time", "evening", "2", "immediate")
+
+    assert service.handle_message(HANDLE, "no") == "[fake] ask_correction (attempt 1)"
+    assert service.handle_message(HANDLE, "no sé") == "[fake] ask_correction (attempt 2)"
+    assert service.handle_message(HANDLE, "nada") == "[fake] close:qualified_to_review"
+    assert service.candidate(HANDLE).status == Status.QUALIFIED_TO_REVIEW
+
+
+def test_a_correction_after_asking_what_to_change_shows_a_new_recap():
+    llm = FakeLLM()
+    service, _ = make_service(llm=llm)
+    service.apply(PHONE)
+    answer(service, "yes", "Ana López", "yes", "yes", "full_time", "evening", "2", "immediate")
+    service.handle_message(HANDLE, "no")
+    llm.queue(Extraction(schedule=Extracted(value="morning", raw_answer="mañanas", confidence=1.0)))
+
+    assert service.handle_message(HANDLE, "el horario") == "[fake] confirm:schedule=morning"
+    assert service.handle_message(HANDLE, "yes") == RECAP.replace("evening", "morning")
+
+
+def test_a_new_value_given_instead_of_a_yes_replaces_the_unsure_one():
+    llm = FakeLLM(script=[Extraction(yes_no=True), UNSURE_NAME])
+    service, _ = make_service(llm=llm)
+    service.apply(PHONE)
+    answer(service, "sí", "ana lopes")
+    llm.queue(
+        Extraction(name=Extracted(value="Ana García", raw_answer="Ana García", confidence=1.0))
+    )
+
+    assert service.handle_message(HANDLE, "no, Ana García") == "[fake] ask:license (attempt 0)"
+    assert service.candidate(HANDLE).name == "Ana García"
+
+
+def test_an_unchanged_value_extracted_again_does_not_spare_the_attempt():
+    llm = FakeLLM()
+    service, _ = make_service(llm=llm)
+    service.apply(PHONE)
+    answer(service, "yes", "Ana López", "yes", "yes")
+    llm.queue(Extraction(name=Extracted(value="Ana López", raw_answer="Ana López", confidence=1.0)))
+
+    assert service.handle_message(HANDLE, "Ana López, ni idea") == (
+        "[fake] ask:availability (attempt 1)"
+    )
+
+
+def test_restating_the_previous_value_drops_the_correction():
+    llm = FakeLLM()
+    service, _ = make_service(llm=llm)
+    service.apply(PHONE)
+    answer(service, "yes", "Ana López", "yes", "yes")
+    llm.queue(
+        NO_LICENSE_AFTER_ALL,
+        Extraction(
+            license=Extracted(value=License(has_license=True), raw_answer="sí", confidence=1.0)
+        ),
+    )
+    service.handle_message(HANDLE, "perdón, no tengo carnet")
+
+    assert service.handle_message(HANDLE, "no, sí tengo") == "[fake] ask:availability (attempt 0)"
+    assert service.candidate(HANDLE).state.fields["license"].value == License(has_license=True)

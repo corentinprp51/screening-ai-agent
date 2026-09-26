@@ -3,6 +3,7 @@ from datetime import date
 import pytest
 
 from app.domain.fields import (
+    KNOCK_OUTS,
     format_value,
     update_field,
     validate_availability,
@@ -141,6 +142,31 @@ def test_validate_license_keeps_the_type_once_given(answer, current, expected):
     assert (verdict.status, verdict.value) == ("valid", expected)
 
 
+AWAITING_VALIDITY = FieldState(
+    status="incomplete", value=License(has_license="expired"), missing="validity"
+)
+
+
+@pytest.mark.parametrize(
+    ("answer", "current", "expected"),
+    [
+        (License(has_license="expired"), EMPTY, ("incomplete", "expired", "validity")),
+        (License(has_license="pending"), EMPTY, ("incomplete", "pending", "validity")),
+        (License(has_license=True), AWAITING_VALIDITY, ("valid", True, None)),
+        (License(has_license="pending"), AWAITING_VALIDITY, ("valid", "pending", None)),
+    ],
+)
+def test_an_expired_or_pending_license_gets_one_follow_up(answer, current, expected):
+    verdict = validate_license(answer, current, TODAY)
+    assert (verdict.status, verdict.value.has_license, verdict.missing) == expected
+
+
+def test_a_license_still_not_valid_after_the_follow_up_fails_the_knock_out():
+    assert KNOCK_OUTS["license"].fails(License(has_license="expired"))
+    assert KNOCK_OUTS["license"].fails(License(has_license=False))
+    assert not KNOCK_OUTS["license"].fails(License(has_license=True))
+
+
 @pytest.mark.parametrize(
     ("answer", "expected"),
     [
@@ -188,6 +214,7 @@ def test_an_unresolved_vehicle_access_follow_up_marks_the_field_needs_review():
     [
         (License(has_license=True, type="car"), "yes (car)"),
         (License(has_license=False), "no"),
+        (License(has_license="expired"), "expired"),
         (OwnVehicle(owns_vehicle="shared", type="moped_motorcycle"), "shared (moped_motorcycle)"),
     ],
 )

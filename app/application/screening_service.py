@@ -11,8 +11,27 @@ from pydantic import JsonValue
 
 from app.application.ports import CandidateRepository, Clock, LLMPort
 from app.domain.fields import INVALID, VALIDATORS, update_field
-from app.domain.flow import Action, Ask, Close, FollowUp, Greet, Recap, next_action, stage_of
-from app.domain.models import Candidate, ClientConfig, Event, Extraction, Message, Status
+from app.domain.flow import (
+    Action,
+    Ask,
+    AskCorrection,
+    Close,
+    Confirm,
+    FollowUp,
+    Greet,
+    Recap,
+    next_action,
+    stage_of,
+)
+from app.domain.models import (
+    Candidate,
+    ClientConfig,
+    Event,
+    Extraction,
+    FieldState,
+    Message,
+    Status,
+)
 
 
 class UnknownCandidate(LookupError):
@@ -148,13 +167,53 @@ class ScreeningService:
                     state.consent = extraction.yes_no
                 if state.consent:
                     events.append(self._event(candidate, "consent_given"))
-            case Ask() | FollowUp():
-                for field_config in self._config.fields:
-                    self._apply_field(
-                        candidate, field_config.type, extraction, pending, text, events
+            case Ask(field=asked) | FollowUp(field=asked):
+                others = [field.type for field in self._config.fields if field.type != asked]
+                changed_others = self._apply_fields(
+                    candidate, others, extraction, pending, text, events
+                )
+                # A message only about other fields (e.g. a correction) uses no attempt.
+                self._apply_field(
+                    candidate, asked, extraction, pending, text, events, not changed_others
+                )
+            case Confirm(field=confirmed):
+                # A new value instead of a yes is validated like any other answer.
+                new_value = (
+                    extraction.yes_no is not True and getattr(extraction, confirmed) is not None
+                )
+                if not new_value:
+                    self._apply_confirmation(
+                        candidate, confirmed, extraction.yes_no is True, events
                     )
-            case Recap():
-                state.recap_confirmed = extraction.yes_no is True
+                fields = [
+                    field.type
+                    for field in self._config.fields
+                    if new_value or field.type != confirmed
+                ]
+                self._apply_fields(candidate, fields, extraction, pending, text, events)
+            case Recap() | AskCorrection():
+                all_fields = [field.type for field in self._config.fields]
+                if self._apply_fields(candidate, all_fields, extraction, pending, text, events):
+                    state.recap_attempts = 0  # a correction: a new recap follows
+                elif extraction.yes_no is True:
+                    state.recap_confirmed = True
+                else:
+                    state.recap_attempts += 1
+
+    def _apply_fields(
+        self,
+        candidate: Candidate,
+        field_types: list[str],
+        extraction: Extraction,
+        pending: Action,
+        text: str,
+        events: list[Event],
+    ) -> bool:
+        """Apply the extraction to these fields; True when any of them changed."""
+        before = dict(candidate.state.fields)
+        for field_type in field_types:
+            self._apply_field(candidate, field_type, extraction, pending, text, events)
+        return candidate.state.fields != before
 
     def _apply_field(
         self,
@@ -164,28 +223,72 @@ class ScreeningService:
         pending: Action,
         text: str,
         events: list[Event],
+        uses_attempt: bool = True,
     ) -> None:
         """Validate one field. Attempts are only used by the question asked: an invalid
-        answer volunteered for another field is ignored."""
+        answer volunteered for another field is ignored. A value understood below the
+        confidence threshold, or a new value for a valid field (a correction), waits for
+        the candidate's confirmation instead of being kept."""
         extracted = getattr(extraction, field_type)
-        current = candidate.state.field(field_type)
+        # A new answer replaces a value still waiting for confirmation.
+        current = candidate.state.field(field_type).model_copy(update={"unconfirmed": None})
         asked = isinstance(pending, Ask | FollowUp) and pending.field == field_type
         if extracted is not None:
             verdict = VALIDATORS[field_type](extracted.value, current, self._clock.now().date())
             if verdict.status == "invalid" and not asked:
                 return
             updated = update_field(current, verdict, extracted.raw_answer, extracted.confidence)
-        elif asked:
+            if verdict.status != "invalid" and (
+                current.status == "valid"
+                or extracted.confidence < self._config.confidence_threshold
+            ):
+                if current.status == "valid" and updated.value == current.value:
+                    # The same value again: nothing to correct (it drops a correction).
+                    candidate.state.fields[field_type] = current
+                    return
+                candidate.state.fields[field_type] = current.model_copy(
+                    update={"unconfirmed": updated}
+                )
+                return
+        elif asked and uses_attempt:
             # Nothing usable for the question asked (e.g. a failed coercion): an invalid
             # answer, and an unanswered follow-up still uses up the one follow-up.
             updated = update_field(current, INVALID, raw_answer=text)
         else:
             return
+        self._set_field(candidate, field_type, updated, events)
+
+    def _apply_confirmation(
+        self, candidate: Candidate, field_type: str, confirmed: bool, events: list[Event]
+    ) -> None:
+        """Yes keeps the unconfirmed value. No drops it: a correction keeps the previous value,
+        an unsure first answer uses one attempt and is asked again."""
+        field = candidate.state.field(field_type)
+        previous = field.model_copy(update={"unconfirmed": None})
+        if confirmed:
+            self._set_field(
+                candidate, field_type, field.unconfirmed, events, corrected=field.status == "valid"
+            )
+        elif field.status == "valid":
+            candidate.state.fields[field_type] = previous
+        else:
+            updated = update_field(previous, INVALID, raw_answer=field.unconfirmed.raw_answer)
+            self._set_field(candidate, field_type, updated, events)
+
+    def _set_field(
+        self,
+        candidate: Candidate,
+        field_type: str,
+        updated: FieldState,
+        events: list[Event],
+        corrected: bool = False,
+    ) -> None:
         candidate.state.fields[field_type] = updated
         if updated.status == "valid":
             if field_type == "name":
                 candidate.name = updated.value
-            events.append(self._event(candidate, "field_captured", field=field_type))
+            event_type = "field_corrected" if corrected else "field_captured"
+            events.append(self._event(candidate, event_type, field=field_type))
         elif updated.status == "needs_review":
             events.append(self._event(candidate, "field_needs_review", field=field_type))
 
