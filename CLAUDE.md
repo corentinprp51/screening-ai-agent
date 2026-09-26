@@ -45,7 +45,7 @@ tests/
 ## Stack
 
 Python 3.12, FastAPI, Pydantic v2, SQLModel + SQLite, PydanticAI, Jinja2 + HTMX + Tailwind (CDN), pytest, uv, Docker.
-LLM provider: TBD, set through config, behind `LLMPort`.
+LLM provider: OpenAI through PydanticAI (`adapters/llm/pydantic_ai_llm.py`), picked by `LLM_MODEL` in `.env`, behind `LLMPort`; empty `LLM_MODEL` runs on the FakeLLM.
 
 ## Rules
 
@@ -77,6 +77,7 @@ LLM provider: TBD, set through config, behind `LLMPort`.
 task dev:install                          # uv sync
 task dev:run                              # web app with reload, chat at http://localhost:8000/chat
 task dev:cli                              # terminal chat
+task dev:smoke                            # scripted messages against the real LLM (needs .env)
 task dev:test                             # pytest (args after --: task dev:test -- tests/domain)
 task dev:format                           # ruff format
 task dev:lint                             # ruff check

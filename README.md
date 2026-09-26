@@ -11,11 +11,16 @@ task dev:install   # uv sync
 task dev:run       # web chat at http://localhost:8000/chat, dashboard at /dashboard
 task dev:cli       # the same screening in the terminal
 task dev:test
+task dev:smoke     # scripted candidate messages against the real LLM (needs a key)
 ```
 
 `CLIENT_ID` selects the client config in `config/clients/` (default `grupo_sazon`). `DATABASE_URL` defaults to `sqlite:///data/screening.db`; delete `data/*.db` when the schema changes.
 
-In v0 the FakeLLM does no language understanding: type canonical values (`yes`, `no`, `shared` for a shared vehicle, `Ana López`).
+### The real LLM
+
+Copy `.env.example` to `.env` (never committed); the Taskfile loads it for `dev:run`, `dev:cli` and `dev:smoke`. Set `LLM_MODEL=openai:gpt-6-luna` and `OPENAI_API_KEY` to screen in free text with OpenAI through PydanticAI; `LLM_TIMEOUT_SECONDS` (default 15) bounds each call. The token usage of each call is logged by the web app and the smoke run (the CLI keeps the chat clean). `task dev:smoke` runs a scripted screening against the real model and prints each extraction, reply and usage; it is not part of `dev:test`, where a test setup blocks every real model request.
+
+Without `LLM_MODEL`, the app runs on the FakeLLM, which does no language understanding: type canonical values (`yes`, `no`, `shared` for a shared vehicle, `Ana López`).
 
 ## Architecture
 
@@ -23,7 +28,7 @@ In v0 the FakeLLM does no language understanding: type canonical values (`yes`, 
 app/
   domain/        pure Python: models (state, extraction contract, config), fields (validators), flow (next_action)
   application/   ports.py (LLMPort, CandidateRepository, Clock) + screening_service.py + recruiter_service.py
-  adapters/      llm/fake_llm.py, persistence/ (SQLModel + SQLite), config/yaml_loader.py, clock.py
+  adapters/      llm/ (fake_llm.py, pydantic_ai_llm.py, prompts/), persistence/ (SQLModel + SQLite), config/yaml_loader.py, clock.py
   api/           deps.py (composition root), json_routes.py (/api), pages.py (HTML + HTMX)
   web/templates/ Jinja2 pages and partials
   cli.py         terminal chat
@@ -35,6 +40,9 @@ A turn: LLM extraction → validation in code → state update → `next_action(
 
 - **The next action is derived from field state, not stored as a stage pointer** ([ADR 0001](docs/adr/0001-derive-next-action-from-field-state.md)). `next_action(state, config)` is a pure function: consent, then the configured fields in order, then the recap, then the outcome. The stage is computed from it and written to the candidate row for the dashboard.
 - **The LLM port stays synchronous** ([ADR 0002](docs/adr/0002-keep-the-llm-port-synchronous.md)). The PydanticAI adapter calls `run_sync` with a fresh OpenAI client per call; messages go out whole and guardrails check the full reply, so there is nothing to stream. Async end to end is the path when volume grows.
+- **`LLM_MODEL` picks the LLM adapter in the composition root.** Empty, the app runs on the FakeLLM, so tests, demos and CI never need a key; `openai:<model>` builds the PydanticAI adapter, which receives the model through its constructor as a factory, so each call gets a fresh OpenAI client (tests pass one returning a PydanticAI `FunctionModel`). A model without `OPENAI_API_KEY` fails at startup with a clear error, not on the first message.
+- **Each LLM call has a bounded budget: a 15 s timeout, one output retry, one transport retry.** The timeout comes from `LLM_TIMEOUT_SECONDS`. An extraction that fails validation is retried once with the validation error fed back (PydanticAI output retries); a connection error, 429 or 5xx is retried once by the OpenAI SDK. After that the error reaches the service, which sends the fallback template and flags `llm_failure`, so the worst case stays around 30 s per call before a reply. `openai_reasoning_effort='none'` keeps gpt-6-luna from reasoning, which is slower and ignores the temperature; extract runs at temperature 0, reply and summarize at 0.4.
+- **One Jinja2 Markdown prompt per LLM call, in `app/adapters/llm/prompts/`.** Code turns the action into plain instructions (which field was asked, where a bare yes or no goes, what the close must say, with the delays from the YAML); the prompt never decides the flow. `StrictUndefined` makes a missing variable fail the call, which the service turns into the fallback, rather than send a half-empty prompt.
 - **The LLM port gets the context of the conversation, not the whole of it.** `extract` receives today from the `Clock` (to resolve "next Monday") and the agent's last message, i.e. the question actually asked next to the pending action. `reply` receives the last 6 messages (`RECENT_MESSAGES`), including the current candidate message although it is stored after the LLM calls, and so does the reply to a recruiter's Confirm or Override. A short window keeps prompts small and bounded; the state carries everything captured earlier.
 - **The FakeLLM is a dumb echo.** It puts the raw message into the slot the pending action asks for and lets Pydantic coercion type it (`"yes"` → `True`); a failed coercion is an invalid answer. Replies are visible `[fake] …` placeholders. Tests can queue scripted extractions instead. No keywords or NLU, so the whole flow is exercised offline and v1 only swaps in a real adapter behind `LLMPort`.
 - **Consent declined is a hard delete.** The candidate, its messages and its events are deleted; the closing message is returned to the chat but not stored. It is not an outcome.

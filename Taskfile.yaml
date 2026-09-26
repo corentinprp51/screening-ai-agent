@@ -10,17 +10,25 @@ tasks:
     desc: Run the web app with auto-reload (chat at http://localhost:8000/chat, dashboard at /dashboard)
     cmds:
       - uv run uvicorn app.api.main:app --reload
+    dotenv: [.env]
 
   dev:cli:
     desc: Run a screening in the terminal
     interactive: true
     cmds:
       - uv run python -m app.cli
+    dotenv: [.env]
 
   dev:test:
     desc: Run the tests (extra pytest args after --, e.g. task dev:test -- tests/domain)
     cmds:
       - uv run pytest {{.CLI_ARGS}}
+
+  dev:smoke:
+    desc: Run scripted candidate messages against the real LLM (LLM_MODEL and OPENAI_API_KEY in .env)
+    cmds:
+      - uv run python -m evals.smoke
+    dotenv: [.env]
 
   dev:format:
     desc: Format code with ruff
