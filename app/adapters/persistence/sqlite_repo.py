@@ -6,7 +6,7 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, col, create_engine, delete, select
 
 from app.adapters.persistence.tables import CandidateRow, EventRow, MessageRow
-from app.domain.models import Candidate, CandidateState, Event, Message, Status
+from app.domain.models import Candidate, CandidateState, Event, Message, Score, Status
 
 
 def create_sqlite_engine(url: str) -> Engine:
@@ -38,7 +38,11 @@ class SqliteCandidateRepository:
             if status is not None:
                 query = query.where(CandidateRow.status == status)
             rows = session.exec(
-                query.order_by(col(CandidateRow.updated_at).desc(), col(CandidateRow.id).desc())
+                query.order_by(
+                    col(CandidateRow.score).desc(),
+                    col(CandidateRow.updated_at).desc(),
+                    col(CandidateRow.id).desc(),
+                )
             ).all()
             return [_to_candidate(row) for row in rows]
 
@@ -59,7 +63,9 @@ class SqliteCandidateRepository:
             row.name = candidate.name
             row.status = candidate.status
             row.stage = candidate.state.stage
+            row.score = candidate.score.total
             row.state_json = candidate.state.model_dump_json()
+            row.score_json = candidate.score.model_dump_json()
             row.created_at = candidate.created_at
             row.updated_at = candidate.updated_at
             session.add(row)
@@ -125,6 +131,7 @@ def _to_candidate(row: CandidateRow) -> Candidate:
         name=row.name,
         status=row.status,
         state=CandidateState.model_validate_json(row.state_json),
+        score=Score.model_validate_json(row.score_json),
         created_at=row.created_at,
         updated_at=row.updated_at,
     )

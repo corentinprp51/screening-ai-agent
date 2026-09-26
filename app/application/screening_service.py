@@ -1,7 +1,7 @@
 """The candidate side of a screening: applying and one turn per candidate message.
 
-Turn: extract (LLM) → validate (code) → update state → next_action() (code)
-→ reply for that action (LLM) → persist.
+Turn: extract (LLM) → validate (code) → update state → next_action() and priority score
+(code) → reply for that action (LLM) → persist.
 """
 
 import re
@@ -32,6 +32,7 @@ from app.domain.models import (
     Message,
     Status,
 )
+from app.domain.scoring import priority_score
 
 
 class UnknownCandidate(LookupError):
@@ -70,6 +71,7 @@ class ScreeningService:
             updated_at=now,
         )
         candidate.state.language = self._config.default_language
+        candidate.score = priority_score(candidate.state, self._config.scoring, now.date())
         candidate = self._repo.save(candidate)
         self._record(candidate, "application_received")
         self._send(candidate, self._config.greeting(candidate.state.language))
@@ -103,6 +105,9 @@ class ScreeningService:
         for event in events:
             self._repo.add_event(candidate.id, event)
         candidate.state.stage = stage_of(action)
+        candidate.score = priority_score(
+            candidate.state, self._config.scoring, self._clock.now().date()
+        )
         if isinstance(action, Close) and action.status and candidate.status != action.status:
             candidate.status = action.status
             if action.status == Status.REJECTION_PROPOSED:

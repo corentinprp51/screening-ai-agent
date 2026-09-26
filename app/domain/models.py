@@ -86,6 +86,33 @@ class Templates(BaseModel):
     after_close: dict[Language, str]
 
 
+class ScoreWeights(BaseModel):
+    """The most points each field can bring to the priority score."""
+
+    availability: int = Field(ge=0)
+    schedule: int = Field(ge=0)
+    start_date: int = Field(ge=0)
+    experience: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _add_up_to_100(self) -> "ScoreWeights":
+        if sum(self.model_dump().values()) != 100:
+            raise ValueError("The score weights must add up to 100")
+        return self
+
+
+class OpenShifts(BaseModel):
+    """The availability and schedules the client is currently hiring for."""
+
+    availability: list[AvailabilityOption] = Field(min_length=1)
+    schedule: list[ScheduleOption] = Field(min_length=1)
+
+
+class Scoring(BaseModel):
+    weights: ScoreWeights
+    open_shifts: OpenShifts
+
+
 class ClientConfig(BaseModel):
     client_id: str
     persona: Persona
@@ -93,6 +120,7 @@ class ClientConfig(BaseModel):
     fields: list[FieldConfig] = Field(min_length=1)
     review_delay_hours: int = Field(gt=0)  # a recruiter replies to a proposed rejection within
     confidence_threshold: float = Field(ge=0, le=1)  # below it, a value is confirmed first
+    scoring: Scoring
     templates: Templates
 
     def greeting(self, language: Language) -> str:
@@ -145,6 +173,16 @@ class CandidateState(BaseModel):
         return self.flags + [flag for field in self.fields.values() for flag in field.flags]
 
 
+class Score(BaseModel):
+    """The priority score, with the points each field brought (the breakdown)."""
+
+    points: dict[str, int] = Field(default_factory=dict)
+
+    @property
+    def total(self) -> int:
+        return sum(self.points.values())
+
+
 class Candidate(BaseModel):
     id: int | None = None
     client_id: str
@@ -152,6 +190,7 @@ class Candidate(BaseModel):
     name: str | None = None
     status: Status = Status.IN_PROGRESS
     state: CandidateState = Field(default_factory=CandidateState)
+    score: Score = Field(default_factory=Score)
     created_at: datetime
     updated_at: datetime
 

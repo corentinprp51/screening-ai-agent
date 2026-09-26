@@ -17,8 +17,11 @@ from app.domain.models import (
     FieldConfig,
     FieldState,
     License,
+    OpenShifts,
     OwnVehicle,
     Persona,
+    ScoreWeights,
+    Scoring,
     Status,
     Templates,
 )
@@ -30,6 +33,10 @@ CONFIG = ClientConfig(
     fields=[FieldConfig(type="name"), FieldConfig(type="schedule")],
     review_delay_hours=24,
     confidence_threshold=0.7,
+    scoring=Scoring(
+        weights=ScoreWeights(availability=30, schedule=20, start_date=30, experience=20),
+        open_shifts=OpenShifts(availability=["full_time"], schedule=["evening"]),
+    ),
     templates=Templates(
         greeting={"es": "hola", "en": "hi"},
         fallback={"es": "perdona", "en": "sorry"},

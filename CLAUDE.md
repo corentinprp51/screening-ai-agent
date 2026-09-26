@@ -39,7 +39,7 @@ tests/
 
 ## Storage (SQLite)
 
-- Tables: `candidates` (client_id, handle, name, status, score, city, `state_json`, `summary_json`, timestamps), `messages` (candidate_id, role, content, language, created_at), `events` (candidate_id, type, stage, payload_json, created_at) for analytics.
+- Tables: `candidates` (client_id, handle, name, status, score, city, `state_json`, `score_json`, `summary_json`, timestamps), `messages` (candidate_id, role, content, language, created_at), `events` (candidate_id, type, stage, payload_json, created_at) for analytics.
 - `create_all()` at startup, no migrations: delete `data/*.db` when the schema changes.
 
 ## Stack

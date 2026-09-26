@@ -34,7 +34,7 @@
         <td class="p-3">{{ row.city or "—" }}</td>
         <td class="p-3">{{ status_labels[row.status] }}</td>
         <td class="p-3">{{ row.stage }}</td>
-        <td class="p-3">{{ row.score if row.score is not none else "—" }}</td>
+        <td class="p-3 font-medium">{{ row.score }}</td>
         <td class="p-3">
           {% for flag in row.flags %}<span class="inline-block rounded bg-amber-100 text-amber-800 px-2 py-0.5 mr-1">{{ flag }}</span>{% endfor %}
         </td>

@@ -38,18 +38,41 @@ def qualify(screening: ScreeningService, phone: str, name: str) -> None:
         screening.handle_message(phone, text)
 
 
-def test_the_queue_lists_every_candidate_most_recent_activity_first(services):
+def test_the_queue_ranks_by_score_then_most_recent_activity(services):
     screening, recruiter, clock = services
-    screening.apply("600000001")
+    qualify(screening, "600000003", "Ana López")
     clock.set(START + timedelta(minutes=5))
-    qualify(screening, "600000002", "Ana López")
+    screening.apply("600000001")
+    clock.set(START + timedelta(minutes=10))
+    screening.apply("600000002")
 
     rows = recruiter.queue()
 
-    assert [row.handle for row in rows] == ["600000002", "600000001"]
+    assert [row.handle for row in rows] == ["600000003", "600000002", "600000001"]
     ana = rows[0]
-    assert (ana.name, ana.status, ana.stage) == ("Ana López", Status.QUALIFIED, "closed")
-    assert ana.last_activity == START + timedelta(minutes=5)
+    assert (ana.name, ana.status, ana.stage, ana.score) == (
+        "Ana López",
+        Status.QUALIFIED,
+        "closed",
+        88,
+    )
+    assert ana.last_activity == START
+
+
+def test_the_detail_shows_the_score_breakdown(services):
+    screening, recruiter, _ = services
+    qualify(screening, "600000002", "Ana López")
+    [row] = recruiter.queue()
+
+    detail = recruiter.detail(row.id)
+
+    assert detail.score == 88
+    assert [(line.field, line.display, line.points, line.weight) for line in detail.breakdown] == [
+        ("availability", "full_time", 30, 30),
+        ("schedule", "evening", 20, 20),
+        ("start_date", "immediate", 30, 30),
+        ("experience", "2 years", 8, 20),
+    ]
 
 
 def test_the_queue_filters_by_status(services):
