@@ -7,12 +7,21 @@ from app.adapters.config.yaml_loader import load_client_config
 from app.adapters.llm.fake_llm import FakeLLM
 from app.adapters.persistence.sqlite_repo import SqliteCandidateRepository, create_sqlite_engine
 from app.application.screening_service import ScreeningService
-from app.domain.models import Experience, Extracted, Extraction, License, OwnVehicle, Status
+from app.domain.models import (
+    Experience,
+    Extracted,
+    Extraction,
+    License,
+    OwnVehicle,
+    Place,
+    Status,
+)
 
 PHONE = "+34 600 111 222"
 HANDLE = "34600111222"
 RECAP = (
-    "[fake] recap: name=Ana López; license=yes; own_vehicle=yes; availability=full_time; "
+    "[fake] recap: name=Ana López; license=yes; own_vehicle=yes; service_area=Madrid (ES); "
+    "availability=full_time; "
     "schedule=evening; experience=2 years; start_date=immediate"
 )
 
@@ -54,7 +63,8 @@ def test_happy_path_asks_every_field_in_order_and_ends_qualified():
     assert service.handle_message(HANDLE, "yes") == "[fake] ask:name (attempt 0)"
     assert service.handle_message(HANDLE, "Ana López") == "[fake] ask:license (attempt 0)"
     assert service.handle_message(HANDLE, "yes") == "[fake] ask:own_vehicle (attempt 0)"
-    assert service.handle_message(HANDLE, "yes") == "[fake] ask:availability (attempt 0)"
+    assert service.handle_message(HANDLE, "yes") == "[fake] ask:service_area (attempt 0)"
+    assert service.handle_message(HANDLE, "Madrid") == "[fake] ask:availability (attempt 0)"
     assert service.handle_message(HANDLE, "full_time") == "[fake] ask:schedule (attempt 0)"
     assert service.handle_message(HANDLE, "evening") == "[fake] ask:experience (attempt 0)"
     assert service.handle_message(HANDLE, "2") == "[fake] ask:start_date (attempt 0)"
@@ -64,12 +74,13 @@ def test_happy_path_asks_every_field_in_order_and_ends_qualified():
     candidate = service.candidate(HANDLE)
     assert candidate.status == Status.QUALIFIED
     assert candidate.name == "Ana López"
+    assert candidate.city == "Madrid"
     assert candidate.state.stage == "closed"
-    assert len(service.transcript(HANDLE)) == 19
+    assert len(service.transcript(HANDLE)) == 21
     assert [e.type for e in repo.list_events(candidate.id)] == [
         "application_received",
         "consent_given",
-        *["field_captured"] * 7,
+        *["field_captured"] * 8,
         "outcome",
     ]
 
@@ -77,7 +88,7 @@ def test_happy_path_asks_every_field_in_order_and_ends_qualified():
 def test_three_invalid_answers_mark_the_field_needs_review_and_end_qualified_to_review():
     service, repo = make_service()
     service.apply(PHONE)
-    answer(service, "yes", "Ana López", "yes", "yes", "full_time")
+    answer(service, "yes", "Ana López", "yes", "yes", "Madrid", "full_time")
 
     assert service.handle_message(HANDLE, "de noche") == "[fake] ask:schedule (attempt 1)"
     assert service.handle_message(HANDLE, "cuando sea") == "[fake] ask:schedule (attempt 2)"
@@ -97,7 +108,7 @@ def test_three_invalid_answers_mark_the_field_needs_review_and_end_qualified_to_
 def test_an_invalid_answer_clears_the_value_and_uses_an_attempt():
     service, _ = make_service()
     service.apply(PHONE)
-    answer(service, "yes", "Ana López", "yes", "yes")
+    answer(service, "yes", "Ana López", "yes", "yes", "Madrid")
 
     assert service.handle_message(HANDLE, "full_time part_time") == (
         "[fake] ask:availability (attempt 1)"
@@ -120,6 +131,9 @@ def test_volunteered_answers_are_kept_and_not_asked_again():
                 own_vehicle=Extracted(
                     value=OwnVehicle(owns_vehicle=True), raw_answer="coche propio", confidence=1.0
                 ),
+                service_area=Extracted(
+                    value=Place(city="Madrid"), raw_answer="Madrid", confidence=1.0
+                ),
                 schedule=Extracted(value="evening", raw_answer="por la tarde", confidence=1.0),
                 experience=Extracted(
                     value=Experience(years=3, platforms=["Glovo"]),
@@ -133,7 +147,8 @@ def test_volunteered_answers_are_kept_and_not_asked_again():
     service.handle_message(HANDLE, "sí")
 
     reply = service.handle_message(
-        HANDLE, "Ana López, carnet de coche y coche propio, por la tarde, 3 años en Glovo"
+        HANDLE,
+        "Ana López, carnet de coche y coche propio, en Madrid, por la tarde, 3 años en Glovo",
     )
 
     assert reply == "[fake] ask:availability (attempt 0)"
@@ -152,6 +167,9 @@ def test_an_invalid_volunteered_answer_is_ignored():
                 own_vehicle=Extracted(
                     value=OwnVehicle(owns_vehicle=True), raw_answer="sí", confidence=1.0
                 ),
+                service_area=Extracted(
+                    value=Place(city="Madrid"), raw_answer="Madrid", confidence=1.0
+                ),
                 availability=Extracted(
                     value=["full_time", "part_time"], raw_answer="both", confidence=1.0
                 ),
@@ -161,7 +179,7 @@ def test_an_invalid_volunteered_answer_is_ignored():
     service.apply(PHONE)
     service.handle_message(HANDLE, "sí")
 
-    assert service.handle_message(HANDLE, "Ana López, sí, sí, both") == (
+    assert service.handle_message(HANDLE, "Ana López, sí, sí, Madrid, both") == (
         "[fake] ask:availability (attempt 0)"
     )
 
@@ -169,7 +187,7 @@ def test_an_invalid_volunteered_answer_is_ignored():
 def test_a_start_date_beyond_90_days_is_kept_with_a_flag_that_does_not_change_the_outcome():
     service, _ = make_service()
     service.apply(PHONE)
-    answer(service, "yes", "Ana López", "yes", "yes", "full_time", "evening", "2")
+    answer(service, "yes", "Ana López", "yes", "yes", "Madrid", "full_time", "evening", "2")
 
     assert service.handle_message(HANDLE, "2027-01-15").startswith("[fake] recap")
     assert service.handle_message(HANDLE, "yes") == "[fake] close:qualified"
@@ -183,7 +201,7 @@ def test_a_start_date_beyond_90_days_is_kept_with_a_flag_that_does_not_change_th
 def test_a_past_start_date_is_asked_again():
     service, _ = make_service()
     service.apply(PHONE)
-    answer(service, "yes", "Ana López", "yes", "yes", "full_time", "evening", "2")
+    answer(service, "yes", "Ana López", "yes", "yes", "Madrid", "full_time", "evening", "2")
 
     assert service.handle_message(HANDLE, "2026-09-25") == "[fake] ask:start_date (attempt 1)"
 
@@ -477,8 +495,8 @@ def test_a_shared_vehicle_gets_one_follow_up_then_needs_review_and_the_screening
     answer(service, "yes", "Ana López", "yes")
 
     assert service.handle_message(HANDLE, "shared") == "[fake] follow_up:own_vehicle (access)"
-    assert service.handle_message(HANDLE, "shared") == "[fake] ask:availability (attempt 0)"
-    answer(service, "full_time", "evening", "2", "immediate")
+    assert service.handle_message(HANDLE, "shared") == "[fake] ask:service_area (attempt 0)"
+    answer(service, "Madrid", "full_time", "evening", "2", "immediate")
     assert service.handle_message(HANDLE, "yes") == "[fake] close:qualified_to_review"
 
     candidate = service.candidate(HANDLE)
@@ -582,7 +600,7 @@ def test_a_confirmed_correction_overwrites_the_value_and_reruns_the_knock_outs()
     llm = FakeLLM()
     service, repo = make_service(llm=llm)
     service.apply(PHONE)
-    answer(service, "yes", "Ana López", "yes", "yes")
+    answer(service, "yes", "Ana López", "yes", "yes", "Madrid")
     llm.queue(NO_LICENSE_AFTER_ALL)
 
     assert service.handle_message(HANDLE, "perdón, no tengo carnet") == (
@@ -600,7 +618,7 @@ def test_a_denied_correction_keeps_the_previous_value_and_uses_no_attempt():
     llm = FakeLLM()
     service, _ = make_service(llm=llm)
     service.apply(PHONE)
-    answer(service, "yes", "Ana López", "yes", "yes")
+    answer(service, "yes", "Ana López", "yes", "yes", "Madrid")
     llm.queue(NO_LICENSE_AFTER_ALL)
     service.handle_message(HANDLE, "perdón, no tengo carnet")
 
@@ -628,7 +646,18 @@ def test_a_correction_at_the_recap_is_confirmed_then_a_new_recap_is_shown():
     llm = FakeLLM()
     service, _ = make_service(llm=llm)
     service.apply(PHONE)
-    answer(service, "yes", "Ana López", "yes", "yes", "full_time", "evening", "2", "immediate")
+    answer(
+        service,
+        "yes",
+        "Ana López",
+        "yes",
+        "yes",
+        "Madrid",
+        "full_time",
+        "evening",
+        "2",
+        "immediate",
+    )
     llm.queue(Extraction(schedule=Extracted(value="morning", raw_answer="mañanas", confidence=1.0)))
 
     assert service.handle_message(HANDLE, "no, prefiero mañanas") == (
@@ -641,7 +670,18 @@ def test_a_correction_at_the_recap_is_confirmed_then_a_new_recap_is_shown():
 def test_a_recap_no_without_a_correction_asks_what_to_change_then_ends_to_review():
     service, _ = make_service()
     service.apply(PHONE)
-    answer(service, "yes", "Ana López", "yes", "yes", "full_time", "evening", "2", "immediate")
+    answer(
+        service,
+        "yes",
+        "Ana López",
+        "yes",
+        "yes",
+        "Madrid",
+        "full_time",
+        "evening",
+        "2",
+        "immediate",
+    )
 
     assert service.handle_message(HANDLE, "no") == "[fake] ask_correction (attempt 1)"
     assert service.handle_message(HANDLE, "no sé") == "[fake] ask_correction (attempt 2)"
@@ -653,7 +693,18 @@ def test_a_correction_after_asking_what_to_change_shows_a_new_recap():
     llm = FakeLLM()
     service, _ = make_service(llm=llm)
     service.apply(PHONE)
-    answer(service, "yes", "Ana López", "yes", "yes", "full_time", "evening", "2", "immediate")
+    answer(
+        service,
+        "yes",
+        "Ana López",
+        "yes",
+        "yes",
+        "Madrid",
+        "full_time",
+        "evening",
+        "2",
+        "immediate",
+    )
     service.handle_message(HANDLE, "no")
     llm.queue(Extraction(schedule=Extracted(value="morning", raw_answer="mañanas", confidence=1.0)))
 
@@ -678,7 +729,7 @@ def test_an_unchanged_value_extracted_again_does_not_spare_the_attempt():
     llm = FakeLLM()
     service, _ = make_service(llm=llm)
     service.apply(PHONE)
-    answer(service, "yes", "Ana López", "yes", "yes")
+    answer(service, "yes", "Ana López", "yes", "yes", "Madrid")
     llm.queue(Extraction(name=Extracted(value="Ana López", raw_answer="Ana López", confidence=1.0)))
 
     assert service.handle_message(HANDLE, "Ana López, ni idea") == (
@@ -690,7 +741,7 @@ def test_restating_the_previous_value_drops_the_correction():
     llm = FakeLLM()
     service, _ = make_service(llm=llm)
     service.apply(PHONE)
-    answer(service, "yes", "Ana López", "yes", "yes")
+    answer(service, "yes", "Ana López", "yes", "yes", "Madrid")
     llm.queue(
         NO_LICENSE_AFTER_ALL,
         Extraction(
@@ -706,7 +757,7 @@ def test_restating_the_previous_value_drops_the_correction():
 def test_the_score_is_recomputed_and_stored_on_every_state_update():
     service, _ = make_service()
     service.apply(PHONE)
-    answer(service, "yes", "Ana López", "yes", "yes")
+    answer(service, "yes", "Ana López", "yes", "yes", "Madrid")
     assert service.candidate(HANDLE).score.total == 0
 
     answer(service, "full_time")
@@ -721,3 +772,74 @@ def test_the_score_is_recomputed_and_stored_on_every_state_update():
         "experience": 8,
     }
     assert candidate.score.total == 68
+
+
+def test_a_city_outside_the_service_areas_proposes_a_rejection():
+    service, repo = make_service()
+    service.apply(PHONE)
+    answer(service, "yes", "Ana López", "yes", "yes")
+
+    assert service.handle_message(HANDLE, "Bilbao") == (
+        "[fake] close:outside_service_area (reply within 24 h)"
+    )
+
+    candidate = service.candidate(HANDLE)
+    assert (candidate.status, candidate.city) == (Status.REJECTION_PROPOSED, "Bilbao")
+    assert repo.list_events(candidate.id)[-1].payload == {
+        "rule": "outside_service_area",
+        "answer": "Bilbao",
+    }
+
+
+def test_a_close_match_is_confirmed_before_it_is_kept():
+    service, _ = make_service()
+    service.apply(PHONE)
+    answer(service, "yes", "Ana López", "yes", "yes")
+
+    assert service.handle_message(HANDLE, "Getaffe") == (
+        "[fake] confirm:service_area=Getafe, Madrid (ES)"
+    )
+    assert service.handle_message(HANDLE, "yes") == "[fake] ask:availability (attempt 0)"
+    assert service.candidate(HANDLE).city == "Madrid"
+
+
+def test_an_unknown_place_gets_one_follow_up_asking_for_the_city():
+    llm = FakeLLM()
+    service, _ = make_service(llm=llm)
+    service.apply(PHONE)
+    answer(service, "yes", "Ana López", "yes", "yes")
+    llm.queue(
+        Extraction(
+            service_area=Extracted(
+                value=Place(zone="Vallecas"), raw_answer="en Vallecas", confidence=1.0
+            )
+        )
+    )
+
+    assert service.handle_message(HANDLE, "en Vallecas") == ("[fake] follow_up:service_area (city)")
+    assert service.handle_message(HANDLE, "Madrid") == "[fake] ask:availability (attempt 0)"
+
+    field = service.candidate(HANDLE).state.fields["service_area"]
+    assert (field.value.city, field.value.zone, field.flags) == (
+        "Madrid",
+        "Vallecas",
+        ["zone_unknown"],
+    )
+
+
+def test_an_unknown_place_still_without_a_city_goes_to_needs_review():
+    llm = FakeLLM()
+    service, _ = make_service(llm=llm)
+    service.apply(PHONE)
+    answer(service, "yes", "Ana López", "yes", "yes")
+    unknown = Extraction(
+        service_area=Extracted(value=Place(zone="por ahí"), raw_answer="por ahí", confidence=1.0)
+    )
+    llm.queue(unknown, unknown)
+
+    answer(service, "por ahí")
+
+    assert service.handle_message(HANDLE, "por ahí") == "[fake] ask:availability (attempt 0)"
+    candidate = service.candidate(HANDLE)
+    assert candidate.state.fields["service_area"].status == "needs_review"
+    assert candidate.status == Status.IN_PROGRESS

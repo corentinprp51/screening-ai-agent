@@ -12,9 +12,10 @@ from app.domain.fields import (
     validate_name,
     validate_own_vehicle,
     validate_schedule,
+    validate_service_area,
     validate_start_date,
 )
-from app.domain.models import Experience, FieldState, License, OwnVehicle
+from app.domain.models import Experience, FieldState, License, Location, OwnVehicle, Place
 
 TODAY = date(2026, 9, 26)
 EMPTY = FieldState()
@@ -230,4 +231,104 @@ def test_an_unresolved_vehicle_access_follow_up_marks_the_field_needs_review():
     ],
 )
 def test_format_value_of_a_license_or_vehicle(value, display):
+    assert format_value(value) == display
+
+
+AREAS = {
+    "ES": {"Madrid": ["Centro", "Getafe", "Móstoles"], "Barcelona": ["L'Hospitalet"]},
+    "MX": {"Ciudad de México": ["Centro", "Coyoacán"], "Guadalajara": []},
+}
+
+
+def in_area(country, city, zone=None):
+    return Location(country=country, city=city, zone=zone, in_service_area=True)
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected"),
+    [
+        # Exact city or zone, after normalization (accents, case, punctuation).
+        (Place(city="Madrid"), ("valid", in_area("ES", "Madrid"), False, [])),
+        (Place(city="  MÓSTOLES "), ("valid", in_area("ES", "Madrid", "Móstoles"), False, [])),
+        (
+            Place(city="coyoacan"),
+            ("valid", in_area("MX", "Ciudad de México", "Coyoacán"), False, []),
+        ),
+        (
+            Place(city="l hospitalet"),
+            ("valid", in_area("ES", "Barcelona", "L'Hospitalet"), False, []),
+        ),
+        (
+            Place(city="Madrid", zone="getafe"),
+            ("valid", in_area("ES", "Madrid", "Getafe"), False, []),
+        ),
+        # A zone shared by two cities is found in the city given.
+        (
+            Place(city="Ciudad de Mexico", zone="Centro"),
+            ("valid", in_area("MX", "Ciudad de México", "Centro"), False, []),
+        ),
+        # Close match, or a zone shared by two cities: confirmed first.
+        (Place(city="Getaffe"), ("valid", in_area("ES", "Madrid", "Getafe"), True, [])),
+        (Place(city="Barcelna"), ("valid", in_area("ES", "Barcelona"), True, [])),
+        (Place(zone="Centro"), ("valid", in_area("ES", "Madrid", "Centro"), True, [])),
+        # A listed city with an unknown zone: in area, with a flag.
+        (
+            Place(city="Madrid", zone="Vallecas"),
+            ("valid", in_area("ES", "Madrid", "Vallecas"), False, ["zone_unknown"]),
+        ),
+        # A city not on the list: outside.
+        (
+            Place(city="Bilbao"),
+            ("valid", Location(city="Bilbao", in_service_area=False), False, []),
+        ),
+        # No city and an unknown zone: ask for the city.
+        (
+            Place(zone="cerca del parque"),
+            ("incomplete", Location(zone="cerca del parque", in_service_area=False), False, []),
+        ),
+        (Place(), ("invalid", None, False, [])),
+    ],
+)
+def test_validate_service_area(answer, expected):
+    verdict = validate_service_area(answer, EMPTY, AREAS)
+    assert (verdict.status, verdict.value, verdict.unsure, verdict.flags) == expected
+
+
+AWAITING_CITY = FieldState(
+    status="incomplete", value=Location(zone="Vallecas", in_service_area=False), missing="city"
+)
+
+
+def test_the_zone_given_before_the_city_follow_up_is_kept():
+    verdict = validate_service_area(Place(city="Madrid"), AWAITING_CITY, AREAS)
+    assert (verdict.status, verdict.value, verdict.flags) == (
+        "valid",
+        in_area("ES", "Madrid", "Vallecas"),
+        ["zone_unknown"],
+    )
+
+
+def test_an_unknown_place_after_the_city_follow_up_marks_the_field_needs_review():
+    verdict = validate_service_area(Place(zone="por ahí"), AWAITING_CITY, AREAS)
+
+    updated = update_field(AWAITING_CITY, verdict, "por ahí", 1.0)
+
+    assert (updated.status, updated.flags) == ("needs_review", [])
+
+
+def test_a_city_outside_the_service_areas_fails_the_knock_out_and_offers_contact():
+    knock_out = KNOCK_OUTS["service_area"]
+    assert knock_out.fails(Location(city="Bilbao", in_service_area=False))
+    assert not knock_out.fails(in_area("ES", "Madrid"))
+    assert knock_out.offers_contact
+
+
+@pytest.mark.parametrize(
+    ("value", "display"),
+    [
+        (in_area("ES", "Madrid", "Getafe"), "Getafe, Madrid (ES)"),
+        (Location(city="Bilbao", in_service_area=False), "Bilbao"),
+    ],
+)
+def test_format_value_of_a_location(value, display):
     assert format_value(value) == display

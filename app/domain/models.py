@@ -8,7 +8,14 @@ from pydantic import BaseModel, BeforeValidator, Field, JsonValue, model_validat
 
 Language = Literal["es", "en"]
 FieldType = Literal[
-    "name", "license", "own_vehicle", "availability", "schedule", "experience", "start_date"
+    "name",
+    "license",
+    "own_vehicle",
+    "service_area",
+    "availability",
+    "schedule",
+    "experience",
+    "start_date",
 ]
 AvailabilityOption = Literal["full_time", "part_time", "weekends"]
 ScheduleOption = Literal["morning", "afternoon", "evening", "flexible"]
@@ -52,8 +59,33 @@ class Experience(BaseModel):
         return {"years": data} if isinstance(data, int | str) else data
 
 
+class Place(BaseModel):
+    """A place as the candidate said it: the city and the zone (a district or a town
+    around it) in their own words. Matching it to the service areas is left to code."""
+
+    city: str | None = None
+    zone: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_text(cls, data: JsonValue) -> JsonValue:
+        """A bare text is the city ("Getafe" → city "Getafe"); code also tries it as a zone."""
+        return {"city": data} if isinstance(data, str) else data
+
+
+class Location(BaseModel):
+    """A place matched against the client's service areas. Country and city are the
+    config's names when matched; outside the areas, the city is kept as said. An unknown
+    place (no city yet) has no city."""
+
+    country: str | None = None
+    city: str | None = None
+    zone: str | None = None
+    in_service_area: bool
+
+
 # The value types a field can hold. A start date is stored as "immediate" or an ISO date.
-FieldValue = str | list[str] | Experience | License | OwnVehicle
+FieldValue = str | list[str] | Experience | License | OwnVehicle | Location
 FieldStatus = Literal["empty", "incomplete", "valid", "needs_review"]
 
 
@@ -113,6 +145,10 @@ class Scoring(BaseModel):
     open_shifts: OpenShifts
 
 
+# Country → city → its zones (possibly none).
+ServiceAreas = dict[str, dict[str, list[str]]]
+
+
 class ClientConfig(BaseModel):
     client_id: str
     persona: Persona
@@ -120,6 +156,7 @@ class ClientConfig(BaseModel):
     fields: list[FieldConfig] = Field(min_length=1)
     review_delay_hours: int = Field(gt=0)  # a recruiter replies to a proposed rejection within
     confidence_threshold: float = Field(ge=0, le=1)  # below it, a value is confirmed first
+    service_areas: ServiceAreas = Field(min_length=1)
     scoring: Scoring
     templates: Templates
 
@@ -188,6 +225,7 @@ class Candidate(BaseModel):
     client_id: str
     handle: str
     name: str | None = None
+    city: str | None = None
     status: Status = Status.IN_PROGRESS
     state: CandidateState = Field(default_factory=CandidateState)
     score: Score = Field(default_factory=Score)
@@ -235,6 +273,7 @@ class Extraction(BaseModel):
     name: Extracted[str] | None = None
     license: Extracted[License] | None = None
     own_vehicle: Extracted[OwnVehicle] | None = None
+    service_area: Extracted[Place] | None = None
     availability: Extracted[Availability] | None = None
     schedule: Extracted[ScheduleOption] | None = None
     experience: Extracted[Experience] | None = None

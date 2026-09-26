@@ -34,7 +34,18 @@ def services(llm):
 
 def qualify(screening: ScreeningService, phone: str, name: str) -> None:
     screening.apply(phone)
-    for text in ["yes", name, "yes", "yes", "full_time", "evening", "2", "immediate", "yes"]:
+    for text in [
+        "yes",
+        name,
+        "yes",
+        "yes",
+        "Madrid",
+        "full_time",
+        "evening",
+        "2",
+        "immediate",
+        "yes",
+    ]:
         screening.handle_message(phone, text)
 
 
@@ -50,8 +61,9 @@ def test_the_queue_ranks_by_score_then_most_recent_activity(services):
 
     assert [row.handle for row in rows] == ["600000003", "600000002", "600000001"]
     ana = rows[0]
-    assert (ana.name, ana.status, ana.stage, ana.score) == (
+    assert (ana.name, ana.city, ana.status, ana.stage, ana.score) == (
         "Ana López",
+        "Madrid",
         Status.QUALIFIED,
         "closed",
         88,
@@ -105,11 +117,12 @@ def test_the_detail_shows_transcript_fields_flags_and_events(services):
 
     assert detail.handle == "600000002"
     assert detail.status == Status.QUALIFIED
-    assert [m.role for m in detail.messages] == ["agent"] + ["candidate", "agent"] * 9
+    assert [m.role for m in detail.messages] == ["agent"] + ["candidate", "agent"] * 10
     name, *others = detail.fields
     assert [(field.field, field.display) for field in others] == [
         ("license", "yes"),
         ("own_vehicle", "yes"),
+        ("service_area", "Madrid (ES)"),
         ("availability", "full_time"),
         ("schedule", "evening"),
         ("experience", "2 years"),
@@ -127,7 +140,7 @@ def test_the_detail_shows_transcript_fields_flags_and_events(services):
     assert [e.type for e in detail.events] == [
         "application_received",
         "consent_given",
-        *["field_captured"] * 7,
+        *["field_captured"] * 8,
         "outcome",
     ]
 
@@ -184,6 +197,21 @@ def test_confirming_rejects_the_candidate_and_sends_the_rejection_message(servic
     assert (detail.rule, detail.answer) == (None, None)
 
 
+def test_confirming_an_outside_service_area_rejection_offers_contact(services):
+    screening, recruiter, _ = services
+    screening.apply("600000001")
+    for text in ["yes", "Ana López", "yes", "yes", "Bilbao"]:
+        screening.handle_message("600000001", text)
+    [row] = recruiter.queue(Status.REJECTION_PROPOSED)
+    assert (row.city, row.rule, row.answer) == ("Bilbao", "outside_service_area", "Bilbao")
+
+    recruiter.confirm_rejection(row.id)
+
+    assert recruiter.detail(row.id).messages[-1].content == (
+        "[fake] close:outside_service_area (offer contact)"
+    )
+
+
 def test_overriding_resumes_the_screening_with_the_next_question(services):
     screening, recruiter, _ = services
     candidate_id = propose_rejection(screening, "600000001")
@@ -197,7 +225,7 @@ def test_overriding_resumes_the_screening_with_the_next_question(services):
         "knock_out_overridden",
         {"rule": "no_license"},
     )
-    assert screening.handle_message("600000001", "yes") == "[fake] ask:availability (attempt 0)"
+    assert screening.handle_message("600000001", "yes") == "[fake] ask:service_area (attempt 0)"
 
 
 def test_a_different_knock_out_after_an_override_proposes_a_rejection_again(services):

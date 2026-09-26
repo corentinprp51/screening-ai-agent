@@ -47,12 +47,14 @@ class AskCorrection:
 @dataclass(frozen=True)
 class Close:
     """For a proposed rejection, `reason` is the failed rule, `field` the field that failed
-    it and `within_hours` the delay in which a recruiter replies."""
+    it and `within_hours` the delay in which a recruiter replies. For a confirmed rejection,
+    `offer_contact` asks the message to offer contact if a nearby location opens."""
 
     status: Status | None
     reason: str | None = None
     field: str | None = None
     within_hours: int | None = None
+    offer_contact: bool = False
 
 
 Action = Greet | Ask | FollowUp | Confirm | Recap | AskCorrection | Close

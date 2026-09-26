@@ -68,10 +68,14 @@ class FakeLLM:
                 )
             case AskCorrection(attempt=attempt):
                 label = f"ask_correction (attempt {attempt})"
-            case Close(status=status, reason=reason, within_hours=within_hours):
+            case Close(
+                status=status, reason=reason, within_hours=within_hours, offer_contact=offer
+            ):
                 label = f"close:{reason or status}"
                 if within_hours:
                     label += f" (reply within {within_hours} h)"
+                if offer:
+                    label += " (offer contact)"
         return f"[fake] {label}"
 
     def summarize(self, facts: dict[str, JsonValue], language: Language) -> str:

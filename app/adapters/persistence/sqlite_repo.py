@@ -61,6 +61,7 @@ class SqliteCandidateRepository:
             row.client_id = candidate.client_id
             row.handle = candidate.handle
             row.name = candidate.name
+            row.city = candidate.city
             row.status = candidate.status
             row.stage = candidate.state.stage
             row.score = candidate.score.total
@@ -129,6 +130,7 @@ def _to_candidate(row: CandidateRow) -> Candidate:
         client_id=row.client_id,
         handle=row.handle,
         name=row.name,
+        city=row.city,
         status=row.status,
         state=CandidateState.model_validate_json(row.state_json),
         score=Score.model_validate_json(row.score_json),
