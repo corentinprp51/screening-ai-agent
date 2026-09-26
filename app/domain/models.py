@@ -16,13 +16,15 @@ VehicleType = Literal["car", "moped_motorcycle"]
 
 
 class License(BaseModel):
-    has_license: bool
+    """`expired` or `pending` gets one follow-up; still not valid, it counts as a no."""
+
+    has_license: bool | Literal["expired", "pending"]
     type: VehicleType | None = None
 
     @model_validator(mode="before")
     @classmethod
     def _from_answer(cls, data: JsonValue) -> JsonValue:
-        """A bare answer is the yes or no ("yes" → has a license)."""
+        """A bare answer is the yes, no, expired or pending ("yes" → has a license)."""
         return {"has_license": data} if isinstance(data, bool | str) else data
 
 
@@ -90,6 +92,7 @@ class ClientConfig(BaseModel):
     default_language: Language
     fields: list[FieldConfig] = Field(min_length=1)
     review_delay_hours: int = Field(gt=0)  # a recruiter replies to a proposed rejection within
+    confidence_threshold: float = Field(ge=0, le=1)  # below it, a value is confirmed first
     templates: Templates
 
     def greeting(self, language: Language) -> str:
@@ -106,6 +109,8 @@ class FieldState(BaseModel):
 
     `incomplete` means one follow-up is pending for the `missing` part.
     `needs_review` means a recruiter must check it; the screening moves on.
+    `unconfirmed` is a value waiting for the candidate's confirmation (unsure, or a correction
+    of a valid value); it replaces this state on a yes.
     """
 
     status: FieldStatus = "empty"
@@ -115,6 +120,7 @@ class FieldState(BaseModel):
     missing: str | None = None
     attempts: int = 0
     flags: list[str] = Field(default_factory=list)
+    unconfirmed: "FieldState | None" = None
 
 
 class CandidateState(BaseModel):
@@ -123,6 +129,7 @@ class CandidateState(BaseModel):
     overridden_knock_outs: list[str] = Field(default_factory=list)  # rules set aside
     fields: dict[str, FieldState] = Field(default_factory=dict)
     recap_confirmed: bool = False
+    recap_attempts: int = 0  # recap answers that were neither a yes nor a correction
     language: Language = "es"
     stage: str = "consent"
     flags: list[str] = Field(default_factory=list)  # on the candidate, not a field

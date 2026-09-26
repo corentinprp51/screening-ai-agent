@@ -19,6 +19,9 @@ fields:
 # A recruiter replies to a proposed rejection within this delay.
 review_delay_hours: 24
 
+# An answer understood with less confidence than this is confirmed with the candidate.
+confidence_threshold: 0.7
+
 templates:
   greeting:
     es: >-

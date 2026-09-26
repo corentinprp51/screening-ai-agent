@@ -1,6 +1,16 @@
 import pytest
 
-from app.domain.flow import Ask, Close, FollowUp, Greet, Recap, next_action, stage_of
+from app.domain.flow import (
+    Ask,
+    AskCorrection,
+    Close,
+    Confirm,
+    FollowUp,
+    Greet,
+    Recap,
+    next_action,
+    stage_of,
+)
 from app.domain.models import (
     CandidateState,
     ClientConfig,
@@ -19,6 +29,7 @@ CONFIG = ClientConfig(
     default_language="es",
     fields=[FieldConfig(type="name"), FieldConfig(type="schedule")],
     review_delay_hours=24,
+    confidence_threshold=0.7,
     templates=Templates(
         greeting={"es": "hola", "en": "hi"},
         fallback={"es": "perdona", "en": "sorry"},
@@ -173,6 +184,46 @@ def test_next_action_ignores_overridden_knock_outs(fields, overridden, expected)
     assert next_action(state, KNOCK_OUT_CONFIG) == expected
 
 
+UNSURE_NAME = FieldState(unconfirmed=VALID_NAME)
+CORRECTED_SCHEDULE = VALID_SCHEDULE.model_copy(
+    update={"unconfirmed": FieldState(status="valid", value="morning")}
+)
+
+
+@pytest.mark.parametrize(
+    ("fields", "expected"),
+    [
+        ({"name": UNSURE_NAME}, Confirm("name")),
+        ({"name": VALID_NAME, "schedule": CORRECTED_SCHEDULE}, Confirm("schedule")),
+        # A value waiting for confirmation comes before the next empty field...
+        ({"schedule": CORRECTED_SCHEDULE}, Confirm("schedule")),
+        # ...but after the knock-outs.
+        ({"license": NO_LICENSE, "schedule": CORRECTED_SCHEDULE}, LICENSE_KNOCK_OUT),
+    ],
+)
+def test_next_action_confirms_a_value_waiting_for_confirmation(fields, expected):
+    state = CandidateState(consent=True, fields=fields)
+    assert next_action(state, KNOCK_OUT_CONFIG) == expected
+
+
+@pytest.mark.parametrize(
+    ("recap_attempts", "expected"),
+    [
+        (0, RECAP),
+        (1, AskCorrection(attempt=1)),
+        (2, AskCorrection(attempt=2)),
+        (3, Close(status=Status.QUALIFIED_TO_REVIEW)),
+    ],
+)
+def test_a_recap_answered_no_asks_what_to_change_until_the_last_attempt(recap_attempts, expected):
+    state = CandidateState(
+        consent=True,
+        fields={"name": VALID_NAME, "schedule": VALID_SCHEDULE},
+        recap_attempts=recap_attempts,
+    )
+    assert next_action(state, CONFIG) == expected
+
+
 def test_a_no_on_a_field_without_the_knock_out_flag_does_not_propose_a_rejection():
     config = CONFIG.model_copy(
         update={"fields": [FieldConfig(type="license"), FieldConfig(type="schedule")]}
@@ -187,6 +238,8 @@ def test_a_no_on_a_field_without_the_knock_out_flag_does_not_propose_a_rejection
         (Greet(), "consent"),
         (Ask("name", attempt=0), "name"),
         (FollowUp("name", missing="surname"), "name"),
+        (Confirm("name"), "name"),
+        (AskCorrection(attempt=1), "recap"),
         (RECAP, "recap"),
         (Close(status=Status.QUALIFIED), "closed"),
         (LICENSE_KNOCK_OUT, "closed"),

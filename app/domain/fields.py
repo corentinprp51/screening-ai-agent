@@ -55,8 +55,14 @@ def validate_name(answer: str, current: FieldState, today: date) -> Verdict:
 
 
 def validate_license(answer: License, current: FieldState, today: date) -> Verdict:
-    """An explicit yes or no; a type given earlier is kept, never re-asked."""
-    return Verdict("valid", value=_keep_type(answer, current))
+    """An explicit yes or no; a type given earlier is kept, never re-asked. An expired or
+    pending license gets one follow-up on validity; still not valid, it is kept as is
+    and fails the knock-out."""
+    answer = _keep_type(answer, current)
+    awaiting_validity = current.status == "incomplete" and current.missing == "validity"
+    if answer.has_license in ("expired", "pending") and not awaiting_validity:
+        return Verdict("incomplete", value=answer, missing="validity")
+    return Verdict("valid", value=answer)
 
 
 def validate_own_vehicle(answer: OwnVehicle, current: FieldState, today: date) -> Verdict:
@@ -174,10 +180,11 @@ class KnockOut:
     fails: Callable[[FieldValue], bool]
 
 
-# Applied to a valid field whose config has `knock_out: true`: only an explicit "no" fails,
-# an unclear answer is needs review and left to a recruiter.
+# Applied to a valid field whose config has `knock_out: true`: only an explicit "no" fails
+# (an expired or pending license counts as a no), an unclear answer is needs review and
+# left to a recruiter.
 KNOCK_OUTS: dict[str, KnockOut] = {
-    "license": KnockOut("no_license", lambda value: value.has_license is False),
+    "license": KnockOut("no_license", lambda value: value.has_license is not True),
     "own_vehicle": KnockOut("no_own_vehicle", lambda value: value.owns_vehicle is False),
 }
 
@@ -195,7 +202,7 @@ def format_value(value: FieldValue | None) -> str:
             License(has_license=answer, type=vehicle_type)
             | OwnVehicle(owns_vehicle=answer, type=vehicle_type)
         ):
-            label = answer if answer == "shared" else ("yes" if answer else "no")
+            label = answer if isinstance(answer, str) else ("yes" if answer else "no")
             return label + (f" ({vehicle_type})" if vehicle_type else "")
         case _:
             return value

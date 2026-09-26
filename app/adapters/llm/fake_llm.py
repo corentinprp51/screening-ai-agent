@@ -1,8 +1,9 @@
 """A deliberately dumb LLM for v0, tests and offline demos. No NLU, no keywords.
 
-- extract: pops a scripted extraction if one is queued; otherwise echoes the raw message
-  into the slot the pending action asks for and lets Pydantic coercion type it
-  ("yes" → True). A failed coercion yields an empty extraction, i.e. an invalid answer.
+- extract: pops a scripted extraction if one is queued (at creation or with `queue`);
+  otherwise echoes the raw message into the slot the pending action asks for and lets
+  Pydantic coercion type it ("yes" → True). A failed coercion yields an empty
+  extraction, i.e. an invalid answer.
 - reply / summarize: visible `[fake] …` placeholders; the recap lists every field.
 - fail_next(call): the next call to that method raises, to exercise the failure path.
 """
@@ -12,7 +13,7 @@ from typing import Literal
 from pydantic import JsonValue, ValidationError
 
 from app.domain.fields import format_value
-from app.domain.flow import Action, Ask, Close, FollowUp, Greet, Recap
+from app.domain.flow import Action, Ask, AskCorrection, Close, Confirm, FollowUp, Greet, Recap
 from app.domain.models import CandidateState, Extraction, Language
 
 LLMCall = Literal["extract", "reply", "summarize"]
@@ -22,6 +23,9 @@ class FakeLLM:
     def __init__(self, script: list[Extraction] | None = None) -> None:
         self._script = list(script or [])
         self._fail: LLMCall | None = None
+
+    def queue(self, *extractions: Extraction) -> None:
+        self._script.extend(extractions)
 
     def fail_next(self, call: LLMCall = "extract") -> None:
         self._fail = call
@@ -36,7 +40,7 @@ class FakeLLM:
         if self._script:
             return self._script.pop(0)
         match action:
-            case Greet() | Recap():
+            case Greet() | Confirm() | Recap() | AskCorrection():
                 data: dict[str, JsonValue] = {"yes_no": message.strip()}
             case Ask(field=field) | FollowUp(field=field):
                 data = {field: {"value": message, "raw_answer": message, "confidence": 1.0}}
@@ -56,10 +60,14 @@ class FakeLLM:
                 label = f"ask:{field} (attempt {attempt})"
             case FollowUp(field=field, missing=missing):
                 label = f"follow_up:{field} ({missing})"
+            case Confirm(field=field):
+                label = f"confirm:{field}={format_value(state.field(field).unconfirmed.value)}"
             case Recap(fields=fields):
                 label = "recap: " + "; ".join(
                     f"{field}={_recap_value(state, field)}" for field in fields
                 )
+            case AskCorrection(attempt=attempt):
+                label = f"ask_correction (attempt {attempt})"
             case Close(status=status, reason=reason, within_hours=within_hours):
                 label = f"close:{reason or status}"
                 if within_hours:
