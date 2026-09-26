@@ -2,12 +2,14 @@
 
 - extract: `Extraction` as output type, at temperature 0; an invalid output gets one
   retry with the validation error fed back.
-- reply / summarize: text, at a slightly higher temperature.
+- reply / summarize: text, at a slightly higher temperature. A reply breaking the message
+  rules gets one retry with the reason fed back.
 - Synchronous, with a fresh OpenAI client per call (ADR 0002). Every error (a timeout,
   an API error, a second invalid output) reaches the service, which sends the fallback.
 """
 
 import logging
+import re
 from collections.abc import Callable
 from datetime import date
 from pathlib import Path
@@ -16,13 +18,13 @@ import pydantic_ai
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from openai import AsyncOpenAI
 from pydantic import JsonValue
-from pydantic_ai import Agent
+from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.models import Model
 from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
 from pydantic_ai.providers.openai import OpenAIProvider
 
 from app.domain.fields import format_value
-from app.domain.flow import Action
+from app.domain.flow import Action, Close, Recap
 from app.domain.models import CandidateState, ClientConfig, Extraction, Language, Message
 
 logger = logging.getLogger(__name__)
@@ -34,6 +36,9 @@ WRITE_TEMPERATURE = 0.4
 MAX_MESSAGE_CHARS = 1000  # a longer candidate message is cut before it reaches the prompt
 MESSAGE_TAG = "candidate_message"
 LANGUAGE_NAMES: dict[Language, str] = {"es": "Spanish", "en": "English"}
+MAX_REPLY_CHARS = 300
+MAX_REPLY_SENTENCES = 2
+EMOJI = re.compile("[\U0001f000-\U0001faff\u2600-\u27bf\u2b00-\u2bff]")
 
 _prompts = Environment(
     loader=FileSystemLoader(Path(__file__).parent / "prompts"),
@@ -60,6 +65,8 @@ class PydanticAILLM:
         self._config = config
         self._timeout = timeout
         self._extractor = Agent(output_type=Extraction, retries={"output": 1})
+        self._replier = Agent(output_type=str, deps_type=Action, retries={"output": 1})
+        self._replier.output_validator(_check_reply)
         self._writer = Agent(output_type=str)
 
     def extract(
@@ -95,6 +102,7 @@ class PydanticAILLM:
     ) -> str:
         prompt = _prompts.get_template("reply.md").render(
             persona=self._config.persona,
+            max_sentences=MAX_REPLY_SENTENCES,
             call_within_hours=self._config.call_within_hours,
             kind=type(action).__name__,
             action=action,
@@ -103,7 +111,7 @@ class PydanticAILLM:
             language=LANGUAGE_NAMES[language],
             transcript=transcript,
         )
-        return self._run("reply", self._writer, prompt, WRITE_TEMPERATURE)
+        return self._run("reply", self._replier, prompt, WRITE_TEMPERATURE, deps=action)
 
     def summarize(self, facts: dict[str, JsonValue], language: Language) -> str:
         prompt = _prompts.get_template("summarize.md").render(
@@ -111,9 +119,12 @@ class PydanticAILLM:
         )
         return self._run("summarize", self._writer, prompt, WRITE_TEMPERATURE)
 
-    def _run[T](self, call: str, agent: Agent[None, T], prompt: str, temperature: float) -> T:
+    def _run[D, T](
+        self, call: str, agent: Agent[D, T], prompt: str, temperature: float, deps: D | None = None
+    ) -> T:
         result = agent.run_sync(
             prompt,
+            deps=deps,
             model=self._model(),
             model_settings=OpenAIResponsesModelSettings(
                 temperature=temperature,
@@ -124,6 +135,29 @@ class PydanticAILLM:
         )
         logger.info("llm %s usage: %s", call, result.usage)
         return result.output
+
+
+def _check_reply(ctx: RunContext[Action], reply: str) -> str:
+    """The message rules, checked by code before the candidate sees the reply. The recap is
+    a list, exempt from the length and sentence limits; an emoji only closes a screening."""
+    text = reply.strip()
+    if not isinstance(ctx.deps, Recap):
+        if len(text) > MAX_REPLY_CHARS:
+            raise ModelRetry(
+                f"The message has {len(text)} characters: "
+                f"write at most {MAX_REPLY_CHARS} characters."
+            )
+        sentences = [part for part in re.split(r"(?<=[.!?…])\s+", text) if part]
+        if len(sentences) > MAX_REPLY_SENTENCES:
+            raise ModelRetry(
+                f"The message has {len(sentences)} sentences: "
+                f"write at most {MAX_REPLY_SENTENCES} sentences."
+            )
+    if text.count("?") > 1:
+        raise ModelRetry("The message asks several questions: ask exactly one question.")
+    if EMOJI.search(text) and not isinstance(ctx.deps, Close):
+        raise ModelRetry("The message has an emoji: use no emoji outside a closing message.")
+    return reply
 
 
 def _display(state: CandidateState, field: str) -> str:
