@@ -254,6 +254,19 @@ def test_the_resuming_cue_opens_the_reply_with_where_the_screening_stands():
     assert "coming back after a silence" not in model.prompt(1)
 
 
+def test_a_resuming_re_ask_drops_the_example_and_one_question_left_is_singular():
+    model = ScriptedModel("ok")
+    state = CandidateState(
+        fields={field.type: FieldState(status="valid", value="x") for field in CONFIG.fields}
+    )
+
+    adapter(model).reply(Ask("schedule", attempt=1), state, "es", [], frozenset({"resuming"}))
+
+    assert "worded differently" in model.prompt()
+    assert "Por ejemplo" not in model.prompt()
+    assert "1 question left" in model.prompt()
+
+
 @pytest.mark.parametrize(
     ("bad_reply", "reason"),
     [

@@ -3,7 +3,9 @@ the screening stopped at, and the reply gets the `resuming` cue."""
 
 from datetime import timedelta
 
-from app.domain.models import Status
+from app.adapters.llm.fake_llm import FakeLLM
+from app.application.recruiter_service import RecruiterService
+from app.domain.models import Extraction, Status
 from tests.application.test_tick import HANDLE, START, Screening, consented
 
 
@@ -68,3 +70,32 @@ def test_other_outcomes_keep_the_after_close_reply():
     assert reply == screening.config.templates.after_close["es"]
     assert screening.candidate().status == Status.REJECTION_PROPOSED
     assert screening.events("resumed") == []
+
+
+def test_a_resume_that_closes_the_screening_has_no_resuming_cue():
+    screening = consented()
+    screening.tick_at(72)
+    screening.llm.queue(Extraction(intent="opt_out"))
+
+    reply = write_at(screening, 80, "ya no me interesa")
+
+    assert reply == "[fake] close:withdrawn"
+    assert screening.candidate().status == Status.WITHDRAWN
+    assert [e.type for e in screening.events("resumed") + screening.events("opted_out")] == [
+        "resumed",
+        "opted_out",
+    ]
+
+
+def test_a_recruiter_message_has_no_cue():
+    screening = consented()
+    screening.answer("Ana López", "no")
+    screening.tick_at(1)
+    llm = FakeLLM()
+    recruiter = RecruiterService(
+        config=screening.config, llm=llm, repo=screening.repo, clock=screening.clock
+    )
+
+    recruiter.override_rejection(screening.candidate().id)
+
+    assert [call["cues"] for call in llm.calls("reply")] == [frozenset()]

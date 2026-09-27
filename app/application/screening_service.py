@@ -124,8 +124,10 @@ class ScreeningService:
         unknown candidate."""
         candidate = self._get(handle)
         events: list[Event] = []
-        if candidate.status == Status.ABANDONED:
-            # Resume at the stage it stopped at: kept only if the turn succeeds.
+        resumed = candidate.status == Status.ABANDONED
+        if resumed:
+            # Resume at the stage it stopped at. On an LLM failure the candidate is reloaded,
+            # so this is kept only if the turn succeeds.
             candidate.status = Status.IN_PROGRESS
             events.append(self._event(candidate, "resumed"))
         elif candidate.status != Status.IN_PROGRESS:
@@ -138,7 +140,7 @@ class ScreeningService:
         last_agent_message = next(
             (m.content for m in reversed(messages) if m.role == "agent"), None
         )
-        cues = self._cues(candidate, messages, events)
+        resuming = resumed or self._nudged_since_last_message(candidate, messages)
         try:
             extraction, usage = self._llm.extract(
                 text, pending, candidate.state, self._clock.now().date(), last_agent_message
@@ -149,6 +151,12 @@ class ScreeningService:
             action = next_action(candidate.state, self._config)
             # The candidate message is stored after the LLM calls, but the reply follows it.
             recent = [*messages, self._message(candidate, "candidate", text)][-RECENT_MESSAGES:]
+            # A closing message is not a welcome back.
+            cues: frozenset[Cue] = (
+                frozenset({"resuming"})
+                if resuming and not isinstance(action, Close)
+                else frozenset()
+            )
             reply, usage = self._llm.reply(
                 action, candidate.state, candidate.state.language, recent, cues
             )
@@ -182,13 +190,9 @@ class ScreeningService:
         self._send(candidate, reply)
         return reply
 
-    def _cues(
-        self, candidate: Candidate, messages: list[Message], events: list[Event]
-    ) -> frozenset[Cue]:
-        """`resuming` after a Nudge since the candidate's last message, or on a resume."""
-        silent = silence(messages, self._repo.list_events(candidate.id))
-        resumed = any(event.type == "resumed" for event in events)
-        return frozenset({"resuming"}) if resumed or (silent and silent.last_nudge) else frozenset()
+    def _nudged_since_last_message(self, candidate: Candidate, messages: list[Message]) -> bool:
+        since_last_message = silence(messages, self._repo.list_events(candidate.id))
+        return since_last_message is not None and since_last_message.last_nudge > 0
 
     def tick(self) -> None:
         """The sweep, run on a schedule: recompute the priority score of every open
