@@ -472,3 +472,87 @@ def test_reopening_an_unknown_candidate_fails(services):
 
     with pytest.raises(UnknownCandidate):
         recruiter.reopen(999)
+
+
+STAGES = [
+    "consent",
+    "name",
+    "license",
+    "own_vehicle",
+    "service_area",
+    "availability",
+    "schedule",
+    "experience",
+    "start_date",
+    "recap",
+    "closed",
+]
+
+
+def dots(recruiter: RecruiterService) -> list[tuple[str, str]]:
+    [row] = recruiter.queue()
+    return [(dot.stage, dot.state) for dot in row.dots]
+
+
+def test_the_stage_dots_follow_the_client_fields(services):
+    screening, recruiter, _ = services
+    screening.apply("600000001")
+    for text in ["yes", "Ana López"]:
+        screening.handle_message("600000001", text)
+
+    assert dots(recruiter) == [
+        ("consent", "done"),
+        ("name", "done"),
+        ("license", "current"),
+        *[(stage, "todo") for stage in STAGES[3:]],
+    ]
+
+
+def test_a_qualified_candidate_has_every_dot_done(services):
+    screening, recruiter, _ = services
+    qualify(screening, "600000001", "Ana López")
+
+    assert dots(recruiter) == [(stage, "done") for stage in STAGES]
+
+
+def test_a_knock_out_marks_the_failing_field(services):
+    screening, recruiter, _ = services
+    candidate_id = propose_rejection(screening, "600000001")
+    expected = [
+        ("consent", "done"),
+        ("name", "done"),
+        ("license", "failed"),
+        *[(stage, "todo") for stage in STAGES[3:]],
+    ]
+    assert dots(recruiter) == expected
+
+    recruiter.confirm_rejection(candidate_id)
+
+    assert dots(recruiter) == expected
+
+
+def test_an_abandoned_screening_greys_out_the_remaining_dots(services):
+    screening, recruiter, clock = services
+    abandon(screening, clock, "600000001")
+
+    assert dots(recruiter) == [
+        ("consent", "done"),
+        ("name", "done"),
+        *[(stage, "stopped") for stage in STAGES[2:]],
+    ]
+
+
+def test_a_withdrawn_screening_greys_out_the_dots_from_where_it_stopped(services, llm):
+    screening, recruiter, _ = services
+    screening.apply("600000001")
+    for text in ["yes", "Ana López", "yes"]:
+        screening.handle_message("600000001", text)
+    llm.queue(Extraction(intent="opt_out"))
+    screening.handle_message("600000001", "stop")
+
+    assert dots(recruiter) == [
+        ("consent", "done"),
+        ("name", "done"),
+        ("license", "done"),
+        *[(stage, "stopped") for stage in STAGES[3:]],
+    ]

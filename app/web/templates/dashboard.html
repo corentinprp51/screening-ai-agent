@@ -20,33 +20,9 @@
         {% if to_confirm %}<th class="p-3">Reason</th><th class="p-3">Answer</th><th class="p-3"></th>{% endif %}
       </tr>
     </thead>
-    <tbody>
-      {% for row in rows %}
-      <tr class="border-b last:border-0 hover:bg-slate-50">
-        <td class="p-3">
-          <a href="/dashboard/candidates/{{ row.id }}" class="underline">{{ row.name or row.handle }}</a>
-          {% if row.summary %}<p class="mt-1 max-w-xs text-xs text-slate-500 whitespace-pre-line">{{ row.summary }}</p>{% endif %}
-        </td>
-        <td class="p-3">{{ row.city or "—" }}</td>
-        <td class="p-3">{{ status_labels[row.status] }}</td>
-        <td class="p-3">{{ row.stage }}</td>
-        <td class="p-3 font-medium">{{ row.score }}</td>
-        <td class="p-3">{{ row.next_action or "—" }}</td>
-        <td class="p-3">
-          {% for flag in row.flags %}<span class="inline-block rounded bg-amber-100 text-amber-800 px-2 py-0.5 mr-1">{{ flag }}</span>{% endfor %}
-        </td>
-        <td class="p-3 text-slate-500">{{ row.last_activity.strftime("%Y-%m-%d %H:%M") }}</td>
-        {% if to_confirm %}
-        <td class="p-3 font-medium">{% if row.rule == "abuse" %}Abuse{% else %}Knock-out: {{ row.rule }}{% endif %}</td>
-        <td class="p-3 text-slate-600">{{ row.answer or "—" }}</td>
-        <td class="p-3">
-          {% with candidate_id = row.id, back = "/dashboard?status=rejection_proposed" %}{% include "partials/decision.html" %}{% endwith %}
-        </td>
-        {% endif %}
-      </tr>
-      {% else %}
-      <tr><td colspan="{{ 11 if to_confirm else 8 }}" class="p-6 text-center text-slate-500">No candidates.</td></tr>
-      {% endfor %}
+    {# The list refreshes itself every 5 s, for the current status tab. #}
+    <tbody hx-get="/dashboard/rows{{ '?status=' ~ current.value if current }}" hx-trigger="every 5s">
+      {% include "partials/queue_rows.html" %}
     </tbody>
   </table>
 </div>

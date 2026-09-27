@@ -112,6 +112,14 @@ def dashboard(request: Request, service: Recruiter, status: Status | None = None
     )
 
 
+@router.get("/dashboard/rows")
+def dashboard_rows(request: Request, service: Recruiter, status: Status | None = None):
+    """HTMX polling: the queue's table body for the status tab, so the list stays live."""
+    return templates.TemplateResponse(
+        request, "partials/queue_rows.html", {"rows": service.queue(status), "current": status}
+    )
+
+
 @router.get("/dashboard/impact")
 def impact(request: Request, service: Recruiter):
     return templates.TemplateResponse(
