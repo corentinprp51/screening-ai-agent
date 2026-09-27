@@ -13,9 +13,10 @@ from app.api.deps import get_dev_clock, get_recruiter_service, get_screening_ser
 from app.api.main import app, create_app
 from app.application.recruiter_service import RecruiterService
 from app.application.screening_service import ScreeningService
-from app.domain.models import Status
+from app.domain.models import Message, Status
 
 HANDLE = "34600111222"
+NOW = datetime(2026, 9, 26, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -77,11 +78,31 @@ def test_page_chat(client):
 def test_page_post_message_returns_only_the_agent_bubble(client):
     """The candidate bubble is already on screen: it was added on Send."""
     client.post("/chat", data={"phone": HANDLE})
-    response = client.post(f"/chat/{HANDLE}/messages", data={"text": "yes"})
+    [greeting] = client.get(f"/api/screenings/{HANDLE}/transcript").json()["messages"]
+
+    response = client.post(
+        f"/chat/{HANDLE}/messages", data={"text": "yes", "after": greeting["id"]}
+    )
+
     assert response.status_code == 200
     assert response.text.count("data-id=") == 1
     assert 'data-role="agent"' in response.text
     assert 'data-role="candidate"' not in response.text
+
+
+def test_page_post_message_also_returns_an_agent_message_the_poll_did_not_show_yet(client):
+    """A Nudge stored after the last poll is not skipped by the cursor moving past it."""
+    client.post("/chat", data={"phone": HANDLE})
+    [greeting] = client.get(f"/api/screenings/{HANDLE}/transcript").json()["messages"]
+    nudge = Message(role="agent", content="¿Seguimos?", language="es", created_at=NOW)
+    client.repo.add_message(candidate_id(client), nudge)
+
+    response = client.post(
+        f"/chat/{HANDLE}/messages", data={"text": "yes", "after": greeting["id"]}
+    )
+
+    assert response.text.count("data-id=") == 2
+    assert "¿Seguimos?" in response.text
 
 
 def candidate_id(client) -> int:
@@ -148,7 +169,7 @@ def test_page_chat_messages_polls_the_transcript(client):
 
 def test_page_chat_messages_after_a_cursor_returns_only_newer_messages(client):
     client.post("/chat", data={"phone": HANDLE})
-    client.post(f"/chat/{HANDLE}/messages", data={"text": "yes"})
+    client.post(f"/chat/{HANDLE}/messages", data={"text": "yes", "after": 0})
     greeting, answer, reply = client.get(f"/api/screenings/{HANDLE}/transcript").json()["messages"]
 
     response = client.get(f"/chat/{HANDLE}/messages", params={"after": greeting["id"]})
@@ -165,7 +186,7 @@ def test_page_chat_messages_after_the_last_message_is_empty(client):
 
     response = client.get(f"/chat/{HANDLE}/messages", params={"after": greeting["id"]})
 
-    assert "data-id=" not in response.text
+    assert response.status_code == 204
 
 
 def test_page_chat_shows_the_persona_from_the_client_config(client):

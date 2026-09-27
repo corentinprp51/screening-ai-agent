@@ -72,16 +72,25 @@ def chat_page(request: Request, handle: str, service: Screening):
 
 
 @router.post("/chat/{handle}/messages")
-def chat_message(request: Request, handle: str, service: Screening, text: Annotated[str, Form()]):
-    """HTMX: returns only the agent's reply bubble; the candidate's was added on Send."""
+def chat_message(
+    request: Request,
+    handle: str,
+    service: Screening,
+    text: Annotated[str, Form()],
+    after: Annotated[int, Form()],
+):
+    """HTMX: returns the agent bubbles after the client's cursor: the reply, plus any
+    message stored since the last poll. The candidate's bubble was added on Send."""
     try:
         reply = service.handle_message(handle, text)
     except UnknownCandidate:
         return HTMLResponse(status_code=404)
-    transcript = service.transcript(handle)
-    # Consent declined: the candidate is erased with its messages, the reply is only shown.
-    message = transcript[-1] if transcript else {"role": "agent", "content": reply}
-    return templates.TemplateResponse(request, "partials/bubbles.html", {"messages": [message]})
+    if service.candidate(handle) is None:
+        # Consent declined: the candidate is erased with its messages, the reply is only shown.
+        messages = [{"role": "agent", "content": reply}]
+    else:
+        messages = [m for m in service.transcript(handle, after) if m.role == "agent"]
+    return templates.TemplateResponse(request, "partials/bubbles.html", {"messages": messages})
 
 
 @router.get("/chat/{handle}/messages")

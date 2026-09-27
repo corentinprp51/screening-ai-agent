@@ -60,9 +60,10 @@
 </div>
 
 {# hx-sync: sending aborts a poll in flight, and polls wait until the reply is on screen,
-   so a poll never adds the message being sent a second time. #}
+   so a poll never adds the message being sent a second time. The cursor is sent too, so
+   the reply comes with any message stored since the last poll. #}
 <form id="composer" class="bg-[#f0f2f5] flex gap-2 px-3 py-2"
-      hx-post="/chat/{{ candidate.handle }}/messages"
+      hx-post="/chat/{{ candidate.handle }}/messages" hx-vals="js:{after: lastMessageId()}"
       hx-target="#messages" hx-swap="beforeend scroll:bottom"
       hx-sync="#messages:replace" hx-disabled-elt="find input, find button"
       hx-on::before-request="showPending(this)" hx-on::after-request="settle(this, event)">
@@ -97,10 +98,12 @@
     return stored.length ? stored[stored.length - 1].dataset.id : 0;
   }
 
+  const hourMinute = (date) => date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
   // Times are stored in UTC: show them in the candidate's time zone.
   htmx.onLoad((element) => {
     element.querySelectorAll("time[datetime]").forEach((time) => {
-      time.textContent = new Date(time.dateTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      time.textContent = hourMinute(new Date(time.dateTime));
     });
   });
 
@@ -108,7 +111,7 @@
   function showPending(form) {
     const pending = document.getElementById("pending").content.cloneNode(true);
     pending.querySelector(".whitespace-pre-line").textContent = form.elements.text.value;
-    pending.querySelector("time").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    pending.querySelector("time").textContent = hourMinute(new Date());
     messages.append(pending);
     messages.scrollTop = messages.scrollHeight;
     form.dataset.text = form.elements.text.value;
