@@ -19,8 +19,9 @@ FieldType = Literal[
 ]
 # How the reply is phrased around its action, chosen by code (the action is unchanged).
 # `resuming`: the candidate writes back after a Nudge, a Reopen or Abandoned.
+# `question_forwarded`: the candidate asked a question, passed on to a recruiter.
 # `confused` / `frustrated`: the sentiment of the candidate's message; `frustrated` offers a call.
-Cue = Literal["resuming", "confused", "frustrated"]
+Cue = Literal["resuming", "question_forwarded", "confused", "frustrated"]
 Sentiment = Literal["neutral", "confused", "frustrated"]
 AvailabilityOption = Literal["full_time", "part_time", "weekends"]
 ScheduleOption = Literal["morning", "afternoon", "evening", "flexible"]
@@ -342,7 +343,8 @@ class Extraction(BaseModel):
     """Everything the LLM may understand from one candidate message."""
 
     language: Language = "es"
-    intent: Literal["answer", "opt_out"] = "answer"
+    intent: Literal["answer", "opt_out", "question"] = "answer"
+    question: str | None = None  # the candidate's question as said, with the `question` intent
     sentiment: Sentiment = "neutral"
     call_requested: bool | None = None  # the answer to the offer to talk to a person
     yes_no: bool | None = None
