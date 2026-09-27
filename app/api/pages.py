@@ -128,6 +128,30 @@ def candidate_detail(request: Request, candidate_id: int, service: Recruiter):
     return templates.TemplateResponse(request, "candidate.html", {"candidate": detail})
 
 
+@router.get("/dashboard/candidates/{candidate_id}/live")
+def candidate_live(request: Request, candidate_id: int, service: Recruiter):
+    """HTMX polling: everything on the candidate page but the transcript."""
+    try:
+        detail = service.detail(candidate_id)
+    except UnknownCandidate:
+        return HTMLResponse("Unknown candidate", status_code=404)
+    return templates.TemplateResponse(
+        request, "partials/candidate_live.html", {"candidate": detail}
+    )
+
+
+@router.get("/dashboard/candidates/{candidate_id}/messages")
+def candidate_messages(request: Request, candidate_id: int, service: Recruiter, after: int = 0):
+    """HTMX polling: the transcript messages after the last one on screen."""
+    try:
+        messages = service.messages(candidate_id, after)
+    except UnknownCandidate:
+        return HTMLResponse("Unknown candidate", status_code=404)
+    if not messages:
+        return HTMLResponse(status_code=204)  # nothing new: no swap
+    return templates.TemplateResponse(request, "partials/bubbles.html", {"messages": messages})
+
+
 @router.post("/dashboard/candidates/{candidate_id}/reopen")
 def candidate_reopen(candidate_id: int, service: Recruiter):
     """Reopen from the candidate page of an Abandoned candidate."""
