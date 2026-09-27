@@ -34,7 +34,7 @@ def client():
     app.dependency_overrides[get_screening_service] = lambda: screening
     app.dependency_overrides[get_recruiter_service] = lambda: recruiter
     test_client = TestClient(app)
-    test_client.repo = repo  # to set up a status no scripted message reaches
+    test_client.repo = repo  # for abandoned_id()
     yield test_client
     app.dependency_overrides.clear()
 
@@ -155,11 +155,17 @@ def test_api_confirm_is_refused_outside_rejection_proposed(client):
     assert response.status_code == 409
 
 
-def test_api_reopen(client):
+def abandoned_id(client) -> int:
+    """A candidate set to Abandoned directly: no scripted message reaches that status."""
     id_ = candidate_id(client)
     candidate = client.repo.get(id_)
     candidate.status = Status.ABANDONED
     client.repo.save(candidate)
+    return id_
+
+
+def test_api_reopen(client):
+    id_ = abandoned_id(client)
 
     response = client.post(f"/api/candidates/{id_}/reopen")
 
@@ -173,10 +179,7 @@ def test_api_reopen_is_refused_outside_abandoned(client):
 
 
 def test_page_reopen_button_redirects_to_the_candidate(client):
-    id_ = candidate_id(client)
-    candidate = client.repo.get(id_)
-    candidate.status = Status.ABANDONED
-    client.repo.save(candidate)
+    id_ = abandoned_id(client)
     assert "Reopen" in client.get(f"/dashboard/candidates/{id_}").text
 
     response = client.post(f"/dashboard/candidates/{id_}/reopen", follow_redirects=False)

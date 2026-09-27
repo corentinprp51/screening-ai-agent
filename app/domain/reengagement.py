@@ -33,14 +33,15 @@ def silence(messages: list[Message], events: list[Event]) -> Silence | None:
     if not unanswered:
         return None
     answered = messages[: -len(unanswered)]
+    # The silence starts at the candidate's last message or the last Reopen, the later one.
     starts = [event.created_at for event in events if event.type == "reopened"]
     if answered:
         starts.append(answered[-1].created_at)
-    start = max(starts, default=None)
+    silent_since = max(starts, default=None)
     nudges = [
         event.payload["number"]
         for event in events
-        if event.type == "nudge_sent" and (start is None or event.created_at > start)
+        if event.type == "nudge_sent" and (silent_since is None or event.created_at > silent_since)
     ]
     return Silence(unanswered[-len(nudges) - 1].created_at, max(nudges, default=0))
 
