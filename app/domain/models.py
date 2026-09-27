@@ -19,7 +19,9 @@ FieldType = Literal[
 ]
 # How the reply is phrased around its action, chosen by code (the action is unchanged).
 # `resuming`: the candidate writes back after a Nudge, a Reopen or Abandoned.
-Cue = Literal["resuming"]
+# `confused` / `frustrated`: the sentiment of the candidate's message; `frustrated` offers a call.
+Cue = Literal["resuming", "confused", "frustrated"]
+Sentiment = Literal["neutral", "confused", "frustrated"]
 AvailabilityOption = Literal["full_time", "part_time", "weekends"]
 ScheduleOption = Literal["morning", "afternoon", "evening", "flexible"]
 VehicleType = Literal["car", "moped_motorcycle"]
@@ -341,6 +343,8 @@ class Extraction(BaseModel):
 
     language: Language = "es"
     intent: Literal["answer", "opt_out"] = "answer"
+    sentiment: Sentiment = "neutral"
+    call_requested: bool | None = None  # the answer to the offer to talk to a person
     yes_no: bool | None = None
     name: Extracted[str] | None = None
     license: Extracted[License] | None = None

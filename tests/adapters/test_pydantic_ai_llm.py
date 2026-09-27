@@ -267,6 +267,33 @@ def test_a_resuming_re_ask_drops_the_example_and_one_question_left_is_singular()
     assert "1 question left" in model.prompt()
 
 
+def test_the_extraction_reads_the_sentiment_and_the_answer_to_the_call_offer():
+    model = ScriptedModel({"language": "es", "sentiment": "frustrated", "call_requested": True})
+
+    extraction = extract(adapter(model), "sí, prefiero que me llaméis")
+
+    assert extraction.sentiment == "frustrated"
+    assert extraction.call_requested is True
+
+
+@pytest.mark.parametrize(
+    ("cue", "instruction"),
+    [
+        ("resuming", "coming back after a silence"),
+        ("confused", "did not understand your last message"),
+        ("frustrated", "talk to a person from the team"),
+    ],
+)
+def test_each_cue_instruction_reaches_the_reply_prompt(cue, instruction):
+    model = ScriptedModel("ok", "ok")
+
+    adapter(model).reply(ASK, CandidateState(), "es", [], frozenset({cue}))
+    adapter(model).reply(ASK, CandidateState(), "es", [], frozenset())
+
+    assert instruction in model.prompt(0)
+    assert instruction not in model.prompt(1)
+
+
 @pytest.mark.parametrize(
     ("bad_reply", "reason"),
     [

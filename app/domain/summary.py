@@ -29,6 +29,8 @@ def recruiter_action(status: Status, state: CandidateState, config: ClientConfig
             return "Check the answers: the recap was not confirmed"
         case Status.REJECTION_PROPOSED:
             return "Confirm or override the proposed rejection"
+        case Status.IN_PROGRESS if "wants_human" in state.flags:
+            return "Call: the candidate asked for it"
         case _:
             return None
 
