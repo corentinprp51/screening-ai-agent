@@ -55,9 +55,9 @@ class PrintingLLM:
         self._llm = llm
 
     def extract(self, *args):
-        extraction = self._llm.extract(*args)
-        print(f"  extraction: {extraction.model_dump_json(exclude_none=True)}")
-        return extraction
+        result = self._llm.extract(*args)
+        print(f"  extraction: {result.output.model_dump_json(exclude_none=True)}")
+        return result
 
     def reply(self, *args):
         return self._llm.reply(*args)

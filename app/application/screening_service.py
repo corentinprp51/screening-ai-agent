@@ -10,7 +10,13 @@ from typing import Literal
 
 from pydantic import JsonValue
 
-from app.application.ports import RECENT_MESSAGES, CandidateRepository, Clock, LLMPort
+from app.application.ports import (
+    RECENT_MESSAGES,
+    CandidateRepository,
+    Clock,
+    LLMPort,
+    LLMUsage,
+)
 from app.domain.fields import (
     INVALID,
     VALIDATORS,
@@ -57,18 +63,19 @@ def normalize_handle(phone: str) -> str:
     return handle
 
 
-def write_summary(candidate: Candidate, config: ClientConfig, llm: LLMPort) -> Exception | None:
-    """Phrase the summary from facts computed by code and store both on the candidate.
-    On failure the text stays empty, the candidate is flagged and the error is returned."""
+def write_summary(candidate: Candidate, config: ClientConfig, llm: LLMPort) -> LLMUsage:
+    """Phrase the summary from facts computed by code, store both on the candidate and
+    return the usage. On failure the text stays empty, the candidate is flagged and the
+    error is raised."""
     facts = summary_facts(candidate.status, candidate.state, config)
     try:
-        text = llm.summarize(facts, config.default_language)
-    except Exception as error:
+        text, usage = llm.summarize(facts, config.default_language)
+    except Exception:
         candidate.summary = Summary(facts=facts)
         candidate.state.add_flag("llm_failure")
-        return error
+        raise
     candidate.summary = Summary(text=text, facts=facts)
-    return None
+    return usage
 
 
 class ScreeningService:
@@ -109,7 +116,8 @@ class ScreeningService:
         if candidate.status != Status.IN_PROGRESS:
             return self._after_close(candidate, text)
 
-        # Both LLM calls happen before any write, so a failure leaves the state unchanged.
+        # Both LLM calls happen before any write except their `llm_call` events, so a failure
+        # leaves the state unchanged.
         pending = next_action(candidate.state, self._config)
         messages = self._repo.list_messages(candidate.id)
         last_agent_message = next(
@@ -117,15 +125,19 @@ class ScreeningService:
         )
         events: list[Event] = []
         try:
-            extraction = self._llm.extract(
+            extraction, usage = self._llm.extract(
                 text, pending, candidate.state, self._clock.now().date(), last_agent_message
             )
+            self._record_llm_call(candidate, "extract", usage)
             candidate.state.language = extraction.language
             self._apply_extraction(candidate, pending, extraction, text, events)
             action = next_action(candidate.state, self._config)
             # The candidate message is stored after the LLM calls, but the reply follows it.
             recent = [*messages, self._message(candidate, "candidate", text)][-RECENT_MESSAGES:]
-            reply = self._llm.reply(action, candidate.state, candidate.state.language, recent)
+            reply, usage = self._llm.reply(
+                action, candidate.state, candidate.state.language, recent
+            )
+            self._record_llm_call(candidate, "reply", usage)
         except Exception as error:
             return self._llm_failure(self._get(handle), text, error)
 
@@ -164,9 +176,12 @@ class ScreeningService:
 
     def _summarize(self, candidate: Candidate) -> None:
         """A summary failure does not stop the turn: the reply is still sent."""
-        error = write_summary(candidate, self._config, self._llm)
-        if error:
+        try:
+            usage = write_summary(candidate, self._config, self._llm)
+        except Exception as error:
             self._record(candidate, "llm_failure", error=repr(error))
+            return
+        self._record_llm_call(candidate, "summarize", usage)
 
     def _after_close(self, candidate: Candidate, text: str) -> str:
         """The screening has stopped: store the message, flag it for the recruiter and
@@ -375,6 +390,9 @@ class ScreeningService:
 
     def _record(self, candidate: Candidate, event_type: str, **payload: JsonValue) -> None:
         self._repo.add_event(candidate.id, self._event(candidate, event_type, **payload))
+
+    def _record_llm_call(self, candidate: Candidate, call: str, usage: LLMUsage) -> None:
+        self._record(candidate, "llm_call", call=call, **usage.model_dump())
 
     def _event(self, candidate: Candidate, event_type: str, **payload: JsonValue) -> Event:
         return Event(

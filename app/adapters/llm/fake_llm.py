@@ -4,6 +4,7 @@
   otherwise echoes the raw message into the slot the pending action asks for and lets
   Pydantic coercion type it ("yes" → True). A failed coercion yields an empty
   extraction, i.e. an invalid answer.
+- Every call returns a zero usage: no tokens are spent.
 - reply / summarize: visible `[fake] …` placeholders; the recap lists every field and the
   summary names the status and the next action.
 - fail_next(call): the next call to that method raises, to exercise the failure path.
@@ -15,6 +16,7 @@ from typing import Literal
 
 from pydantic import JsonValue, ValidationError
 
+from app.application.ports import LLMResult, LLMUsage
 from app.domain.fields import format_value
 from app.domain.flow import Action, Ask, AskCorrection, Close, Confirm, FollowUp, Greet, Recap
 from app.domain.models import CandidateState, Extraction, Language, Message
@@ -49,7 +51,7 @@ class FakeLLM:
         state: CandidateState,
         today: date,
         last_agent_message: str | None,
-    ) -> Extraction:
+    ) -> LLMResult[Extraction]:
         self._log.append(
             (
                 "extract",
@@ -64,7 +66,7 @@ class FakeLLM:
         )
         self._maybe_fail("extract")
         if self._script:
-            return self._script.pop(0)
+            return LLMResult(self._script.pop(0), LLMUsage())
         match action:
             case Greet() | Confirm() | Recap() | AskCorrection():
                 data: dict[str, JsonValue] = {"yes_no": message.strip()}
@@ -73,9 +75,10 @@ class FakeLLM:
             case _:
                 data = {}
         try:
-            return Extraction.model_validate({"language": "es", **data})
+            extraction = Extraction.model_validate({"language": "es", **data})
         except ValidationError:
-            return Extraction(language="es")
+            extraction = Extraction(language="es")
+        return LLMResult(extraction, LLMUsage())
 
     def reply(
         self,
@@ -83,7 +86,7 @@ class FakeLLM:
         state: CandidateState,
         language: Language,
         transcript: list[Message],
-    ) -> str:
+    ) -> LLMResult[str]:
         self._log.append(
             (
                 "reply",
@@ -119,12 +122,13 @@ class FakeLLM:
                     label += f" (reply within {within_hours} h)"
                 if offer:
                     label += " (offer contact)"
-        return f"[fake] {label}"
+        return LLMResult(f"[fake] {label}", LLMUsage())
 
-    def summarize(self, facts: dict[str, JsonValue], language: Language) -> str:
+    def summarize(self, facts: dict[str, JsonValue], language: Language) -> LLMResult[str]:
         self._log.append(("summarize", {"facts": facts, "language": language}))
         self._maybe_fail("summarize")
-        return f"[fake] summary: {facts['status']}; next: {facts['next_action']}"
+        text = f"[fake] summary: {facts['status']}; next: {facts['next_action']}"
+        return LLMResult(text, LLMUsage())
 
 
 def _recap_value(state: CandidateState, field: str) -> str:

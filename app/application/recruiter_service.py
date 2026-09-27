@@ -5,7 +5,13 @@ from datetime import datetime
 
 from pydantic import BaseModel, JsonValue
 
-from app.application.ports import RECENT_MESSAGES, CandidateRepository, Clock, LLMPort
+from app.application.ports import (
+    RECENT_MESSAGES,
+    CandidateRepository,
+    Clock,
+    LLMPort,
+    LLMUsage,
+)
 from app.application.screening_service import UnknownCandidate, write_summary
 from app.domain.fields import KNOCK_OUTS, format_value
 from app.domain.flow import Action, Close, next_action, stage_of
@@ -179,8 +185,12 @@ class RecruiterService:
             # Another knock-out had already failed (a volunteered answer): propose it now.
             answer = candidate.state.field(action.field).raw_answer
             self._record(candidate, "rejection_proposed", rule=action.reason, answer=answer)
-            if error := write_summary(candidate, self._config, self._llm):
+            try:
+                usage = write_summary(candidate, self._config, self._llm)
+            except Exception as error:
                 self._record(candidate, "llm_failure", error=repr(error))
+            else:
+                self._record_llm_call(candidate, "summarize", usage)
         else:
             candidate.status = Status.IN_PROGRESS
             candidate.summary = None  # a new one is written when the questions stop again
@@ -224,13 +234,17 @@ class RecruiterService:
         else changes and the recruiter can try again."""
         recent = self._repo.list_messages(candidate.id)[-RECENT_MESSAGES:]
         try:
-            return self._llm.reply(action, candidate.state, candidate.state.language, recent)
+            reply, usage = self._llm.reply(
+                action, candidate.state, candidate.state.language, recent
+            )
         except Exception as error:
             stored = self._get(candidate.id)  # drop the in-memory changes
             stored.state.add_flag("llm_failure")
             self._record(stored, "llm_failure", error=repr(error))
             self._repo.save(stored)
             raise LLMUnavailable(candidate.id) from error
+        self._record_llm_call(candidate, "reply", usage)
+        return reply
 
     def _send(self, candidate: Candidate, content: str) -> None:
         """Save the candidate and store the agent message: the chat picks it up by polling."""
@@ -254,3 +268,6 @@ class RecruiterService:
                 created_at=self._clock.now(),
             ),
         )
+
+    def _record_llm_call(self, candidate: Candidate, call: str, usage: LLMUsage) -> None:
+        self._record(candidate, "llm_call", call=call, **usage.model_dump())
