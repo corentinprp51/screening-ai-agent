@@ -1,0 +1,25 @@
+name: screening-ai-agent
+
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: sqlite:////app/data/screening.db
+      DEV_ROUTES: ${DEV_ROUTES:-false}
+    volumes:
+      - screening-data:/app/data
+    healthcheck:
+      # No spaces in the code: Podman splits the command on them.
+      test: ["CMD", "python", "-c", "__import__('urllib.request').request.urlopen('http://localhost:8000/')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  screening-data:

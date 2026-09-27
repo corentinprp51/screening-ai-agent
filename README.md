@@ -16,6 +16,17 @@ task dev:smoke     # scripted candidate messages against the real LLM (needs a k
 
 `CLIENT_ID` selects the client config in `config/clients/` (default `grupo_sazon`). `DATABASE_URL` defaults to `sqlite:///data/screening.db`; delete `data/*.db` when the schema changes.
 
+### In a container
+
+With [Podman](https://podman.io/) and no Python setup on the host:
+
+```
+task container:up     # podman compose up --build --detach, then http://localhost:8000/chat
+task container:down   # stop it; the database stays in the screening-data volume
+```
+
+`docker compose up --build -d` and `docker compose down` work the same with the same `compose.yaml`. The service reads `.env` if present (optional: without it, the FakeLLM), keeps the SQLite database in the `screening-data` named volume so candidates survive a restart, is health-checked on the home page, and runs with `DEV_ROUTES=false` unless `.env` sets it. After a schema change, drop the volume with `podman compose down --volumes`.
+
 ### The real LLM
 
 Copy `.env.example` to `.env` (never committed); the Taskfile loads it for `dev:run`, `dev:cli` and `dev:smoke`. Set `LLM_MODEL=openai:gpt-6-luna` and `OPENAI_API_KEY` to screen in free text with OpenAI through PydanticAI; `LLM_TIMEOUT_SECONDS` (default 15) bounds each call. The token usage of each call is logged by the web app and the smoke run (the CLI keeps the chat clean). `task dev:smoke` runs a scripted screening against the real model and prints each extraction, reply and usage; it is not part of `dev:test`, where a test setup blocks every real model request.
@@ -38,6 +49,7 @@ A turn: LLM extraction → validation in code → state update → `next_action(
 
 ## Key design decisions
 
+- **One multi-stage image and one Compose service, run with Podman or Docker.** The build stage installs the locked dependencies with uv (`uv sync --locked --no-dev`); the runtime stage copies the virtualenv and the code onto `python:3.12-slim`, without uv, as a non-root user. The SQLite file lives in a named volume rather than a bind mount, so it keeps working under rootless Podman. The health check calls the home page with Python's `urllib`, since the slim image has no curl, written without spaces because Podman splits the command on them. The Taskfile uses `podman compose`; the files are plain Compose, so `docker compose` runs them unchanged.
 - **The next action is derived from field state, not stored as a stage pointer** ([ADR 0001](docs/adr/0001-derive-next-action-from-field-state.md)). `next_action(state, config)` is a pure function: consent, then the configured fields in order, then the recap, then the outcome. The stage is computed from it and written to the candidate row for the dashboard.
 - **The LLM port stays synchronous** ([ADR 0002](docs/adr/0002-keep-the-llm-port-synchronous.md)). The PydanticAI adapter calls `run_sync` with a fresh OpenAI client per call; messages go out whole and guardrails check the full reply, so there is nothing to stream. Async end to end is the path when volume grows.
 - **`LLM_MODEL` picks the LLM adapter in the composition root.** Empty, the app runs on the FakeLLM, so tests, demos and CI never need a key; `openai:<model>` builds the PydanticAI adapter, which receives the model through its constructor as a factory, so each call gets a fresh OpenAI client (tests pass one returning a PydanticAI `FunctionModel`). A model without `OPENAI_API_KEY` fails at startup with a clear error, not on the first message.
