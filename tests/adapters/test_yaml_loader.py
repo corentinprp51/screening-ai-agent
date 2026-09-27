@@ -39,6 +39,13 @@ def test_a_config_with_a_nudge_template_missing_fails_at_load(tmp_path):
         load_client_config("bad", config_dir=tmp_path)
 
 
+def test_a_config_without_the_nudges_of_a_language_fails_at_load(tmp_path):
+    _write_config(tmp_path, lambda data: data["templates"]["nudges"].pop("en"))
+
+    with pytest.raises(ValueError, match="every language"):
+        load_client_config("bad", config_dir=tmp_path)
+
+
 def test_a_nudge_delay_after_the_deadline_fails_at_load(tmp_path):
     _write_config(tmp_path, lambda data: data.update(nudge_delays_hours=[1, 20, 80]))
 

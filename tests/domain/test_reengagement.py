@@ -3,8 +3,16 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.adapters.config.yaml_loader import load_client_config
-from app.domain.models import CandidateState, FieldState
-from app.domain.reengagement import Deadline, Nudge, due_step, questions_left
+from app.domain.models import CandidateState, Event, FieldState, Message, Status
+from app.domain.reengagement import (
+    Deadline,
+    Nudge,
+    Silence,
+    due_step,
+    questions_left,
+    silence,
+    silent_outcome,
+)
 
 CONFIG = load_client_config("grupo_sazon")
 ASKED_AT = datetime(2026, 9, 26, 10, 0, tzinfo=UTC)
@@ -63,3 +71,61 @@ def test_only_the_recap_left_is_one_question():
     )
 
     assert questions_left(state, CONFIG) == 1
+
+
+def message(role: str, hours: float) -> Message:
+    return Message(
+        role=role, content="…", language="es", created_at=ASKED_AT + timedelta(hours=hours)
+    )
+
+
+def nudge_event(number: int, hours: float) -> Event:
+    return Event(
+        type="nudge_sent",
+        stage="name",
+        payload={"number": number},
+        created_at=ASKED_AT + timedelta(hours=hours),
+    )
+
+
+def test_the_silence_starts_at_the_question_before_the_nudges():
+    messages = [message("agent", -1), message("candidate", 0), message("agent", 0)]
+    messages += [message("agent", 1), message("agent", 20)]
+
+    assert silence(messages, [nudge_event(1, 1), nudge_event(2, 20)]) == Silence(ASKED_AT, 2)
+
+
+def test_nudges_before_the_last_answer_belong_to_an_earlier_silence():
+    messages = [message("agent", -5), message("agent", -4), message("candidate", 0)]
+    messages += [message("agent", 0)]
+
+    assert silence(messages, [nudge_event(1, -4)]) == Silence(ASKED_AT, 0)
+
+
+def test_after_an_override_the_silence_starts_at_the_new_question():
+    # the close message, then the recruiter's override sends the next question
+    messages = [message("candidate", -3), message("agent", -3), message("agent", 0)]
+
+    assert silence(messages, []) == Silence(ASKED_AT, 0)
+
+
+def test_no_silence_when_the_candidate_wrote_last():
+    assert silence([message("agent", -1), message("candidate", 0)], []) is None
+
+
+def test_a_silent_screening_with_every_field_settled_is_qualified_to_review():
+    fields = {field.type: FieldState(status="valid", value="x") for field in CONFIG.fields}
+    fields["schedule"] = FieldState(status="needs_review")
+    # a correction of a valid field left unconfirmed: the valid value stands
+    fields["name"] = FieldState(status="valid", value="Ana", unconfirmed=FieldState(value="Eva"))
+
+    assert silent_outcome(CandidateState(consent=True, fields=fields), CONFIG) == (
+        Status.QUALIFIED_TO_REVIEW
+    )
+
+
+def test_a_silent_screening_with_a_field_left_is_abandoned():
+    fields = {field.type: FieldState(status="valid", value="x") for field in CONFIG.fields}
+    fields["start_date"] = FieldState(unconfirmed=FieldState(status="valid", value="immediate"))
+
+    assert silent_outcome(CandidateState(consent=True, fields=fields), CONFIG) == Status.ABANDONED

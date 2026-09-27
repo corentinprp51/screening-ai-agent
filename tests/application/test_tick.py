@@ -7,6 +7,7 @@ from app.adapters.clock import FixedClock
 from app.adapters.config.yaml_loader import load_client_config
 from app.adapters.llm.fake_llm import FakeLLM
 from app.adapters.persistence.sqlite_repo import SqliteCandidateRepository, create_sqlite_engine
+from app.application.recruiter_service import RecruiterService
 from app.application.screening_service import ScreeningService
 from app.domain.models import Status
 
@@ -153,14 +154,60 @@ def test_at_the_deadline_an_unconfirmed_recap_is_qualified_to_review_with_a_summ
 
 def test_at_the_deadline_an_unanswered_greeting_is_erased_and_counted_anonymously():
     screening = Screening()
-    screening.service.apply(PHONE, "Ana")
+    candidate_id = screening.service.apply(PHONE, "Ana").id
 
     screening.tick_at(71)
     assert screening.candidate() is not None
     screening.tick_at(72)
 
     assert screening.candidate() is None
+    assert screening.repo.list_messages(candidate_id) == []
+    assert screening.repo.list_events(candidate_id) == []
     assert screening.repo.count_consent_drop_offs("grupo_sazon") == 1
+
+
+def test_a_reply_to_the_greeting_that_is_not_a_consent_is_still_erased_at_the_deadline():
+    screening = Screening()
+    screening.service.apply(PHONE)
+    screening.answer("maybe")  # neither yes nor no: the consent is asked again at START
+
+    screening.tick_at(1)
+    assert screening.events("nudge_sent") == []
+    screening.tick_at(72)
+
+    assert screening.candidate() is None
+    assert screening.repo.count_consent_drop_offs("grupo_sazon") == 1
+
+
+def test_nothing_is_sent_once_the_screening_has_ended():
+    screening = consented()
+    screening.tick_at(72)
+    messages = screening.agent_messages()
+
+    screening.tick_at(96)
+    screening.tick_at(200)
+
+    assert screening.candidate().status == Status.ABANDONED
+    assert screening.agent_messages() == messages
+    assert len(screening.events("abandoned")) == 1
+
+
+def test_after_a_recruiter_override_the_delays_count_from_the_new_question():
+    screening = consented()
+    screening.answer("Ana López", "no")  # rejection proposed at START
+    screening.clock.set(START + timedelta(hours=30))
+    recruiter = RecruiterService(
+        config=load_client_config("grupo_sazon"),
+        llm=FakeLLM(),
+        repo=screening.repo,
+        clock=screening.clock,
+    )
+    recruiter.override_rejection(screening.candidate().id)  # asks the next field at 30 h
+
+    screening.tick_at(30.5)
+    assert screening.events("nudge_sent") == []
+    screening.tick_at(31)
+    assert [e.payload["number"] for e in screening.events("nudge_sent")] == [1]
 
 
 def test_the_priority_score_of_an_open_candidate_is_recomputed_on_each_tick():

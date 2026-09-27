@@ -2,7 +2,7 @@
 
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Literal, get_args
 
 from pydantic import BaseModel, BeforeValidator, Field, JsonValue, model_validator
 
@@ -170,6 +170,8 @@ class ClientConfig(BaseModel):
         delays = self.nudge_delays_hours
         if delays != sorted(set(delays)) or delays[0] <= 0 or delays[-1] >= self.deadline_hours:
             raise ValueError("The nudge delays must increase, from above 0 to below the deadline")
+        if set(self.templates.nudges) != set(get_args(Language)):
+            raise ValueError("The nudges need templates in every language")
         for language, nudges in self.templates.nudges.items():
             if len(nudges) != len(delays):
                 raise ValueError(f"The {language} nudges need one template per nudge delay")

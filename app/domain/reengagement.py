@@ -3,8 +3,9 @@ last unanswered question. A Nudge does not restart the delays."""
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from itertools import takewhile
 
-from app.domain.models import CandidateState, ClientConfig
+from app.domain.models import CandidateState, ClientConfig, Event, Message, Status
 
 
 @dataclass(frozen=True)
@@ -17,6 +18,29 @@ class Deadline:
     """The screening ends: Abandoned, Qualified to review, or erased before consent."""
 
 
+@dataclass(frozen=True)
+class Silence:
+    asked_at: datetime  # the last unanswered question
+    last_nudge: int  # the number of the last Nudge sent since (0 for none)
+
+
+def silence(messages: list[Message], events: list[Event]) -> Silence | None:
+    """The silence since the candidate's last message, None when they wrote last. The agent
+    messages after it are the question (possibly after another message, e.g. a recruiter's
+    override following a close), then one per Nudge sent since."""
+    unanswered = list(takewhile(lambda m: m.role == "agent", reversed(messages)))[::-1]
+    if not unanswered:
+        return None
+    answered = messages[: -len(unanswered)]
+    answered_at = answered[-1].created_at if answered else None
+    nudges = [
+        event.payload["number"]
+        for event in events
+        if event.type == "nudge_sent" and (answered_at is None or event.created_at > answered_at)
+    ]
+    return Silence(unanswered[-len(nudges) - 1].created_at, max(nudges, default=0))
+
+
 def due_step(
     asked_at: datetime, last_nudge: int, now: datetime, config: ClientConfig
 ) -> Nudge | Deadline | None:
@@ -27,6 +51,16 @@ def due_step(
         return Deadline()
     due = sum(elapsed >= timedelta(hours=hours) for hours in config.nudge_delays_hours)
     return Nudge(due) if due > last_nudge else None
+
+
+def silent_outcome(state: CandidateState, config: ClientConfig) -> Status:
+    """At the deadline: every field answered (only the recap left) is Qualified to review,
+    anything else Abandoned. A correction left unconfirmed keeps the valid value."""
+    settled = all(
+        state.field(field_config.type).status in ("valid", "needs_review")
+        for field_config in config.fields
+    )
+    return Status.QUALIFIED_TO_REVIEW if settled else Status.ABANDONED
 
 
 def questions_left(state: CandidateState, config: ClientConfig) -> int:
