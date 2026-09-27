@@ -50,8 +50,8 @@ class QueueRow(BaseModel):
     score: int
     flags: list[str]
     last_activity: datetime
-    rule: str | None = None  # the failed knock-out, in Rejection proposed
-    answer: str | None = None  # the candidate's answer to it
+    rule: str | None = None  # the failed knock-out or `abuse`, in Rejection proposed
+    answer: str | None = None  # the candidate's answer to it, or the abusive message
     summary: str | None = None
     next_action: str | None = None
 
@@ -201,13 +201,14 @@ class RecruiterService:
         )
 
     def confirm_rejection(self, candidate_id: int) -> None:
-        """Reject the candidate and send the rejection message for the failed rule."""
+        """Reject the candidate and send the rejection message for the failed rule. An abuse
+        rejection cites no requirement of the position."""
         candidate, proposal = self._proposal(candidate_id)
         rejection = Close(
             status=Status.REJECTED,
             reason=proposal.reason,
             field=proposal.field,
-            offer_contact=KNOCK_OUTS[proposal.field].offers_contact,
+            offer_contact=proposal.field is not None and KNOCK_OUTS[proposal.field].offers_contact,
         )
         reply = self._reply(candidate, rejection)
         candidate.status = Status.REJECTED
@@ -215,12 +216,19 @@ class RecruiterService:
         self._send(candidate, reply)
 
     def override_rejection(self, candidate_id: int) -> None:
-        """Set the failed knock-out aside for good and send the next question right away."""
+        """Set the failed knock-out aside for good, or reset the abuse count, and send the
+        next question right away."""
         candidate, proposal = self._proposal(candidate_id)
-        candidate.state.overridden_knock_outs.append(proposal.reason)
+        if proposal.reason == "abuse":
+            candidate.state.abuse_count = 0
+        else:
+            candidate.state.overridden_knock_outs.append(proposal.reason)
         action = next_action(candidate.state, self._config)
         reply = self._reply(candidate, action)
-        self._record(candidate, "knock_out_overridden", rule=proposal.reason)
+        if proposal.reason == "abuse":
+            self._record(candidate, "abuse_overridden")
+        else:
+            self._record(candidate, "knock_out_overridden", rule=proposal.reason)
         candidate.state.stage = stage_of(action)
         if isinstance(action, Close) and action.status == Status.REJECTION_PROPOSED:
             # Another knock-out had already failed (a volunteered answer): propose it now.
@@ -390,12 +398,21 @@ class RecruiterService:
         return candidate, proposal
 
     def _failed_knock_out(self, candidate: Candidate) -> dict[str, str | None]:
-        """The rule and the candidate's answer, for a candidate in Rejection proposed."""
+        """The rule and the candidate's answer, for a candidate in Rejection proposed. For
+        abuse, the answer is the message recorded with the proposal."""
         if candidate.status != Status.REJECTION_PROPOSED:
             return {}
         proposal = next_action(candidate.state, self._config)
-        if not isinstance(proposal, Close) or proposal.field is None:
+        if not isinstance(proposal, Close):
             return {}
+        if proposal.field is None:
+            proposed = [
+                event
+                for event in self._repo.list_events(candidate.id)
+                if event.type == "rejection_proposed"
+            ]
+            answer = proposed[-1].payload.get("answer") if proposed else None
+            return {"rule": proposal.reason, "answer": answer}
         return {
             "rule": proposal.reason,
             "answer": candidate.state.field(proposal.field).raw_answer,

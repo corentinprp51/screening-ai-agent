@@ -19,8 +19,13 @@
 
 {% if candidate.rule %}
 <div class="mb-4 flex flex-wrap items-center gap-4 rounded-lg bg-red-50 border border-red-200 p-3 text-sm">
-  <span>Failed rule: <strong>{{ candidate.rule }}</strong></span>
+  {% if candidate.rule == "abuse" %}
+  <span>Abuse: <strong>repeated abusive messages</strong>, not a knock-out</span>
+  <span class="text-slate-600">Message: “{{ candidate.answer or "—" }}”</span>
+  {% else %}
+  <span>Failed knock-out: <strong>{{ candidate.rule }}</strong></span>
   <span class="text-slate-600">Answer: “{{ candidate.answer or "—" }}”</span>
+  {% endif %}
   {% with candidate_id = candidate.id, back = "/dashboard/candidates/" ~ candidate.id %}{% include "partials/decision.html" %}{% endwith %}
 </div>
 {% endif %}

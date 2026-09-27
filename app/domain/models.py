@@ -19,7 +19,8 @@ FieldType = Literal[
 ]
 # How the reply is phrased around its action, chosen by code (the action is unchanged).
 # `resuming`: the candidate writes back after a Nudge, a Reopen or Abandoned.
-Cue = Literal["resuming"]
+# `refocus`: the candidate's message was abusive; the reply brings them back to the step.
+Cue = Literal["resuming", "refocus"]
 AvailabilityOption = Literal["full_time", "part_time", "weekends"]
 ScheduleOption = Literal["morning", "afternoon", "evening", "flexible"]
 VehicleType = Literal["car", "moped_motorcycle"]
@@ -255,6 +256,7 @@ class CandidateState(BaseModel):
     consent: bool | None = None
     opted_out: bool = False
     overridden_knock_outs: list[str] = Field(default_factory=list)  # rules set aside
+    abuse_count: int = 0  # abusive messages since the start, or since an override
     fields: dict[str, FieldState] = Field(default_factory=dict)
     recap_confirmed: bool = False
     recap_attempts: int = 0  # recap answers that were neither a yes nor a correction
@@ -340,7 +342,7 @@ class Extraction(BaseModel):
     """Everything the LLM may understand from one candidate message."""
 
     language: Language = "es"
-    intent: Literal["answer", "opt_out"] = "answer"
+    intent: Literal["answer", "opt_out", "abuse"] = "answer"
     yes_no: bool | None = None
     name: Extracted[str] | None = None
     license: Extracted[License] | None = None
