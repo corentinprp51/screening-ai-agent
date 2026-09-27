@@ -1,6 +1,12 @@
 version: "3"
 
 tasks:
+  default:
+    desc: List the available tasks
+    cmds:
+      - task --list
+    silent: true
+
   dev:install:
     desc: Install dependencies with uv
     cmds:
@@ -60,6 +66,11 @@ tasks:
     desc: Stop the container; the database stays in its volume
     cmds:
       - podman compose down
+
+  container:logs:
+    desc: Follow the container logs (Ctrl+C to stop)
+    cmds:
+      - podman compose logs --follow
 
   container:reset:
     desc: Stop the container and delete its database volume (after a schema change)

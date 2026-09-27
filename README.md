@@ -2,38 +2,75 @@
 
 A messaging agent that screens delivery-driver applicants for a client, and a dashboard where recruiters follow each candidate to an outcome. Agent behavior is specified in [`docs/process_design.md`](docs/process_design.md); vocabulary in [`CONTEXT.md`](CONTEXT.md).
 
-## Run
+## Setup
 
-Requires [uv](https://docs.astral.sh/uv/) and [Task](https://taskfile.dev/).
+### Prerequisites
+
+- [uv](https://docs.astral.sh/uv/) (it installs Python 3.12 if needed)
+- [Task](https://taskfile.dev/)
+- An OpenAI API key, only for the real LLM. Without one, the app runs on the FakeLLM.
+
+### 1. Install
 
 ```
-task dev:install   # uv sync
-task dev:run       # web chat at http://localhost:8000/chat, dashboard at /dashboard
-task dev:cli       # the same screening in the terminal
-task dev:test
-task dev:smoke     # scripted candidate messages against the real LLM (needs a key)
-task dev:evals     # LLM-played personas against the real LLM, written to samples/ (needs a key)
+task dev:install
 ```
+
+### 2. Configure (optional)
+
+```
+cp .env.example .env
+```
+
+Leave `LLM_MODEL` empty to run on the FakeLLM: no API call, but no language understanding either, so type canonical values (`yes`, `no`, `shared` for a shared vehicle, `Ana López`). To screen in free text, set:
+
+```
+LLM_MODEL=openai:gpt-6-luna
+OPENAI_API_KEY=sk-...
+```
+
+`.env` is never committed. The other variables are documented in [`.env.example`](.env.example).
+
+### 3. Run
+
+```
+task dev:run
+```
+
+- Candidate chat: http://localhost:8000/chat
+- Recruiter dashboard: http://localhost:8000/dashboard
+- API docs: http://localhost:8000/docs
+
+`task dev:cli` runs the same screening in the terminal.
+
+### Or in a container
+
+With [Podman](https://podman.io/) and no Python setup on the host (`docker compose` works too, Compose v2.24 or later):
+
+```
+task container:up      # build and start, then http://localhost:8000/chat
+task container:logs    # follow the logs (Ctrl+C to stop)
+task container:down    # stop; the database stays in the screening-data volume
+task container:reset   # stop and delete the volume (after a schema change)
+```
+
+The container reads `.env` when present and keeps `DEV_ROUTES=false` unless `.env` enables it.
+
+## Commands
+
+`task` alone lists every task.
+
+| Command | What it does |
+|---|---|
+| `task dev:install` | Install dependencies with uv |
+| `task dev:run` | Web app with auto-reload |
+| `task dev:cli` | Screening in the terminal |
+| `task dev:test` | pytest, FakeLLM only (args after `--`, e.g. `task dev:test -- tests/domain`) |
+| `task dev:smoke` | Scripted screening against the real LLM, printing each extraction, reply and token usage |
+| `task dev:evals` | LLM-played personas against the real LLM, written to `samples/conversations/` |
+| `task dev:format` / `task dev:lint` / `task dev:lint:fix` | ruff |
 
 `CLIENT_ID` selects the client config in `config/clients/` (default `grupo_sazon`). `DATABASE_URL` defaults to `sqlite:///data/screening.db`; delete `data/*.db` when the schema changes.
-
-### In a container
-
-With [Podman](https://podman.io/) and no Python setup on the host:
-
-```
-task container:up      # podman compose up --build --detach, then http://localhost:8000/chat
-task container:down    # stop it; the database stays in the screening-data volume
-task container:reset   # stop it and delete the volume (after a schema change)
-```
-
-The same `docker-compose.yaml` runs with `docker compose` (Compose v2.24 or later, for the optional env file). The service reads `.env` when present (without it, the FakeLLM) and sets `DEV_ROUTES=false` unless `.env` enables it.
-
-### The real LLM
-
-Copy `.env.example` to `.env` (never committed); the Taskfile loads it for `dev:run`, `dev:cli`, `dev:smoke` and `dev:evals`. Set `LLM_MODEL=openai:gpt-6-luna` and `OPENAI_API_KEY` to screen in free text with OpenAI through PydanticAI; `LLM_TIMEOUT_SECONDS` (default 15) bounds each call. The token usage of each call is logged by the web app and the smoke run (the CLI keeps the chat clean). `task dev:smoke` runs a scripted screening against the real model and prints each extraction, reply and usage; it is not part of `dev:test`, where a test setup blocks every real model request.
-
-Without `LLM_MODEL`, the app runs on the FakeLLM, which does no language understanding: type canonical values (`yes`, `no`, `shared` for a shared vehicle, `Ana López`).
 
 ### Demo the Nudges and the deadline
 
@@ -41,15 +78,65 @@ Set `DEV_ROUTES=1` in `.env` and run `task dev:run`. The app then reads the time
 
 ### Evals and sample conversations
 
-`task dev:evals` plays ten personas (`evals/personas.py`) against the real agent, in parallel, each on its own in-memory database and fixed clock; `task dev:evals -- frustrated silent` runs only those. gpt-6-luna plays the candidate from the persona's profile and judges the run. The silent persona answers twice, then ticks take it through the three Nudges to its 72 h outcome. It exits non-zero when a code check fails. It is never part of `dev:test`, which only tests the checks and the runner loop offline (FakeLLM agent, scripted candidate).
+`task dev:evals` plays ten personas (`evals/personas.py`) against the real agent, in parallel, each on its own in-memory database and fixed clock; `task dev:evals -- frustrated silent` runs only those. gpt-6-luna plays the candidate from the persona's profile and judges the run. It exits non-zero when a code check fails. It is never part of `dev:test`.
 
-Read the results in [`samples/conversations/`](samples/conversations/README.md): the index lists each persona's outcome, code checks and judge scores; each `<persona>.md` has the profile, the outcome and flags, the failed checks, the judge's scores with a reason, the recruiter summary and the timed transcript (`+48 h 01` for a Nudge); `<persona>.json` holds the verdict the index is built from, so running a subset keeps the other rows.
+Read the results in [`samples/conversations/`](samples/conversations/README.md): the index lists each persona's outcome, code checks and judge scores; each `<persona>.md` has the profile, the outcome and flags, the failed checks, the judge's scores, the recruiter summary and the timed transcript.
 
 ## Architecture
 
+```mermaid
+flowchart LR
+    candidate([Candidate]) --> chat["Chat page / CLI"]
+    recruiter([Recruiter]) --> dash["Dashboard"]
+    ats([ATS]) --> json["JSON API /api"]
+    scheduler(["Scheduler or /api/dev/tick"]) --> json
+
+    subgraph api["api/ (FastAPI, deps.py composition root)"]
+        chat
+        dash
+        json
+    end
+
+    subgraph application["application/"]
+        screening["ScreeningService<br/>turn, tick"]
+        recruiterSvc["RecruiterService<br/>queue, confirm, override, reopen, impact"]
+        ports{{"Ports: LLMPort, CandidateRepository, Clock"}}
+    end
+
+    subgraph domain["domain/ (pure Python, no I/O)"]
+        flow["flow: next_action()"]
+        fields["fields: validators"]
+        scoring["scoring, areas,<br/>reengagement, summary"]
+    end
+
+    subgraph adapters["adapters/"]
+        llm["PydanticAI LLM<br/>or FakeLLM"]
+        repo["SQLite repository"]
+        clock["System or dev clock"]
+        yaml["YAML config loader"]
+    end
+
+    chat --> screening
+    dash --> recruiterSvc
+    json --> screening
+    json --> recruiterSvc
+    screening --> domain
+    recruiterSvc --> domain
+    screening --> ports
+    recruiterSvc --> ports
+    ports -.implemented by.-> llm
+    ports -.implemented by.-> repo
+    ports -.implemented by.-> clock
+    llm --> openai[(OpenAI)]
+    repo --> db[(SQLite)]
+    yaml --> config[/"config/clients/*.yaml"/]
+```
+
+A turn: input guardrails → LLM extraction (structured output, temperature 0) → validation in code → state update → `next_action()` → LLM reply for that action → output guardrails → persist. The LLM understands and phrases; code decides.
+
 ```
 app/
-  domain/        pure Python: models (state, extraction contract, config), fields (validators), flow (next_action), reengagement (Nudges, deadline)
+  domain/        pure Python: models, fields (validators), flow (next_action), areas, scoring, reengagement, summary
   application/   ports.py (LLMPort, CandidateRepository, Clock) + screening_service.py + recruiter_service.py
   adapters/      llm/ (fake_llm.py, pydantic_ai_llm.py, prompts/), persistence/ (SQLModel + SQLite), config/yaml_loader.py, clock.py
   api/           deps.py (composition root), json_routes.py (/api), pages.py (HTML + HTMX), dev_routes.py (DEV_ROUTES only)
@@ -57,63 +144,20 @@ app/
   cli.py         terminal chat
 ```
 
-A turn: LLM extraction → validation in code → state update → `next_action()` → LLM reply for that action → persist.
-
 ## Key design decisions
 
-- **One multi-stage image and one Compose service, run with Podman or Docker.** The build stage installs the locked dependencies with uv (`uv sync --locked --no-dev`); the runtime stage copies the virtualenv and the code onto `python:3.12-slim`, without uv, as a non-root user. The SQLite file lives in a named volume rather than a bind mount, so it keeps working under rootless Podman. The health check calls the home page with curl, added to the runtime image, which the slim base lacks. The Taskfile uses `podman compose`; the files are plain Compose, so `docker compose` runs them unchanged.
-- **The next action is derived from field state, not stored as a stage pointer** ([ADR 0001](docs/adr/0001-derive-next-action-from-field-state.md)). `next_action(state, config)` is a pure function: consent, then the configured fields in order, then the recap, then the outcome. The stage is computed from it and written to the candidate row for the dashboard.
-- **The LLM port stays synchronous** ([ADR 0002](docs/adr/0002-keep-the-llm-port-synchronous.md)). The PydanticAI adapter calls `run_sync` with a fresh OpenAI client per call; messages go out whole and guardrails check the full reply, so there is nothing to stream. Async end to end is the path when volume grows.
-- **`LLM_MODEL` picks the LLM adapter in the composition root.** Empty, the app runs on the FakeLLM, so tests, demos and CI never need a key; `openai:<model>` builds the PydanticAI adapter, which receives the model through its constructor as a factory, so each call gets a fresh OpenAI client (tests pass one returning a PydanticAI `FunctionModel`). A model without `OPENAI_API_KEY` fails at startup with a clear error, not on the first message.
-- **Each LLM call has a bounded budget: a 15 s timeout, one output retry, one transport retry.** The timeout comes from `LLM_TIMEOUT_SECONDS`. An extraction that fails validation is retried once with the validation error fed back (PydanticAI output retries); a connection error, 429 or 5xx is retried once by the OpenAI SDK. After that the error reaches the service, which sends the fallback template and flags `llm_failure`, so the worst case stays around 30 s per call before a reply. `openai_reasoning_effort='none'` keeps gpt-6-luna from reasoning, which is slower and ignores the temperature; extract runs at temperature 0, reply and summarize at 0.4.
-- **One Jinja2 Markdown prompt per LLM call, in `app/adapters/llm/prompts/`.** Code turns the action into plain instructions (which field was asked, where a bare yes or no goes, what the close must say, with the delays from the YAML); the prompt never decides the flow. `StrictUndefined` makes a missing variable fail the call, which the service turns into the fallback, rather than send a half-empty prompt.
-- **The candidate message reaches the extract prompt as data, capped and delimited.** It is cut at 1,000 characters and wrapped in `<candidate_message>` tags it cannot close (angle brackets are removed from the message), with the instruction to never follow what it says. Injected text can at worst produce a wrong extraction, which code validates like any other; the flow is never in the prompt.
-- **Confidence follows one scale, and a silent field is left empty.** 1.0 for an explicit value, about 0.8 for a colloquial or inferred one ("un par de años" → 2), about 0.5 for a guess; below the YAML `confidence_threshold` the value is confirmed with the candidate. A field the message says nothing about is omitted, never given a low confidence.
-- **A bare yes restates no field.** A yes to a confirmation or the recap only sets `yes_no`; the extraction never copies values from the agent's message. Otherwise a value echoed in a slightly different form would count as a correction (ADR 0001) and loop the recap, which the first live smoke run showed.
-- **The language falls back instead of failing.** The extraction gives the message's language; a message with no clear language ("ok", "2", a name) keeps the current one, and any other language maps to the closest of es / en, else the client's default. The contract stays `es | en`, so an unsupported language never reaches the validators.
-- **Delivery platforms are a client list, mapped by the LLM.** The YAML `platforms` list is given to the extract prompt, which maps a named platform to it and anything else to `other`. Nothing in code validates platforms: they only describe experience and never score or knock out.
-- **Replies are checked by code before the candidate sees them.** An output validator on the reply agent raises `ModelRetry` with the reason when a reply has more than 300 characters or 2 sentences (the Recap, a list, is exempt from both), more than one `?`, or an emoji outside a `Close`. The model gets one retry with the reason fed back; a second failure reaches the service, which sends the fallback template and flags `llm_failure`. The prompt asks for about 250 characters (process design §4), so the 300-character check is a tolerance and a safety net, not the steering. The only emoji allowed before a close is the one in the YAML greeting template, which never goes through the LLM.
-- **Canonical values are phrased by the LLM, not translated by code.** The reply prompt gets the stored codes (`full_time`, `moped_motorcycle`, an ISO date) with a short glossary and phrases them in the candidate's language ("jornada completa", "moto", "el lunes 5 de octubre"). There is no translation table to keep in sync with the options, and the recap lists every field in config order without adding any.
-- **No forbidden-word check on replies.** The prompt forbids the topics (job or salary promises, age, nationality, health, immigration status); a word list would miss paraphrases and block legitimate words ("salario" in a question the candidate asked). The v2 evals check these topics on whole conversations instead.
-- **The LLM port gets the context of the conversation, not the whole of it.** `extract` receives today from the `Clock` (to resolve "next Monday") and the agent's last message, i.e. the question actually asked next to the pending action. `reply` receives the last 6 messages (`RECENT_MESSAGES`), including the current candidate message although it is stored after the LLM calls, and so does the reply to a recruiter's Confirm or Override. A short window keeps prompts small and bounded; the state carries everything captured earlier.
-- **The FakeLLM is a dumb echo.** It puts the raw message into the slot the pending action asks for and lets Pydantic coercion type it (`"yes"` → `True`); a failed coercion is an invalid answer. Replies are visible `[fake] …` placeholders. Tests can queue scripted extractions instead. No keywords or NLU, so the whole flow is exercised offline and v1 only swaps in a real adapter behind `LLMPort`.
-- **Consent declined is a hard delete.** The candidate, its messages and its events are deleted; the closing message is returned to the chat but not stored. It is not an outcome.
-- **A missing part gets one follow-up, then is accepted with a flag.** For the name, an answer to the surname follow-up that does not repeat the first name is taken as the surname(s) (`Ana` + `López García`).
-- **Attempts are counted only for the question asked.** Each invalid answer to it uses one attempt and clears the value (the raw answer is kept); the 3rd marks the field needs review and the flow moves on. An invalid answer volunteered for another field is ignored, while valid volunteered answers are kept and not asked again. A needs-review field turns Qualified into Qualified to review.
-- **Validators receive "today" as an argument.** The service reads it from the `Clock` port, so the start-date rules (past → invalid, beyond +90 days → valid with a flag) stay pure and testable.
-- **Values stay canonical and language-neutral.** Availability is a list of options, a start date is stored as `immediate` or an ISO date, experience is years plus platforms. Pydantic coercion on the extraction contract types the FakeLLM echo (`"full_time, weekends"` → a list, `"2"` → 2 years).
-- **An opt-out after consent closes as Withdrawn from any stage.** The extraction's `opt_out` intent sets `opted_out` on the state and `next_action()` returns the Withdrawn close; an `opted_out` event keeps the stage it happened at. During the consent question, a refusal is a declined consent instead.
-- **Messages after an outcome never reopen the screening.** Any message while the status is not In progress (an outcome or Rejection proposed) is stored and answered with the fixed `after_close` YAML template in the candidate's last language, with no LLM call. The candidate gets the `message_after_close` flag and moves to the top of the queue; reopening is a recruiter decision.
-- **An LLM failure leaves the state unchanged.** Both LLM calls of a turn run before any write but their `llm_call` event, and the turn's other events are buffered until the reply exists. If either call raises, the service stores the candidate's message, sends the `fallback` YAML template in their last language, flags `llm_failure` and records an event; the next message gets the same question. The timeout and the single retry with the validation error fed back belong to the v1 PydanticAI adapter; the service only sees the final failure.
-- **Knock-outs are checked on every turn, before the fields are walked.** A field's `knock_out` flag comes from the YAML; only a validated "no" (no license, no own vehicle) fails it. A failed knock-out never rejects: the status becomes Rejection proposed, the questions stop, and the `Close` action carries the rule and the YAML review delay so the reply can say when a recruiter answers. A `rejection_proposed` event records the rule and the candidate's answer.
-- **An unclear knock-out answer goes to needs review, never to a rejection.** A license answer still unparseable after three attempts is needs review and the screening continues. A shared or borrowed vehicle gets one follow-up on access; an explicit yes or no settles it, anything else marks the field needs review and leaves the knock-out to a recruiter (unlike the surname, it is not accepted with a flag). A license or vehicle type is kept once given and never asked for.
-- **One confirmation rule everywhere: unsure values and corrections wait on the candidate's yes.** A value understood below the YAML `confidence_threshold`, or a different value for a field that is already valid, is stored as the field's `unconfirmed` value; `next_action()` returns `Confirm` for it right after the knock-outs, wherever the candidate is in the flow, including the recap. Yes keeps it, and the knock-outs run again on the next `next_action()` (a license corrected to "no" proposes a rejection). No drops it: a correction keeps the previous value, an unsure first answer uses one attempt and is asked again. The same value extracted again is not a correction, and a message that only corrects another answer uses no attempt on the question asked.
-- **A recap answered "no" without a correction asks what to change.** Any recap answer that is neither a yes nor a correction counts one recap attempt and gets an `AskCorrection` question; a correction resets the count and a new recap follows. On the 3rd attempt (the same limit as a field) the recap is left unconfirmed and the outcome is Qualified to review.
-- **An expired or pending license gets one follow-up, then counts as a no.** The license knock-out passes only on an explicit yes, so a license still expired or pending after the follow-up, or an unclear answer to it, proposes a rejection.
-- **A recruiter confirms or overrides a proposed rejection; the proposal itself is never stored.** The failed rule is recomputed by `next_action()` from the state, so the "To confirm" tab, Confirm and Override all read the same thing. Confirm sets Rejected and sends the LLM reply for a `Close` carrying the rule. Override adds the rule to `overridden_knock_outs`, which `next_action()` ignores from then on, and sends the next question right away; a different knock-out failing later proposes a rejection again. Both are refused outside Rejection proposed. Their LLM call runs before any write: on failure the candidate is flagged `llm_failure`, nothing else changes and the recruiter can try again.
-- **Three ports only; an outbound message is a stored agent message.** A recruiter action does not push anything: it stores the agent message, and the chat page polls the transcript every 3 s to show it. A channel port (to send a message out) arrives with WhatsApp or SMS, where the provider needs an explicit send.
-- **The chat sends optimistically through HTMX hooks and polls with a cursor.** On Send, `hx-on::before-request` adds the candidate bubble (✓) and a typing bubble, and the header says *typing…*; the POST, which also sends the cursor, returns only the agent bubbles after it (the reply, plus a message such as a Nudge stored since the last poll, which would otherwise be skipped), then `after-request` removes the typing bubble and marks the candidate bubble ✓✓. A failed request removes both bubbles and puts the text back in the input. `hx-disabled-elt` locks the input while a reply is pending, so two turns for one candidate never run at once. Every stored bubble renders its message id, and the poll asks `GET /chat/{handle}/messages?after=<last id>` with `beforeend`, so only newer messages are added (a 204 when there are none): nothing on screen is wiped or animated again. The form's `hx-sync="#messages:replace"` aborts a poll in flight on Send and holds polls until the reply is on screen, so a poll never adds the message being sent a second time. The header names come from `persona` in the client YAML; animations are CSS keyframes, off under `prefers-reduced-motion`.
-- **The apply screen is a plain form in the chat look, not an HTMX request.** `/chat` posts and follows the 303 to the chat as a real navigation, so the browser history and the chat's own scripts behave normally. On submit a few lines of inline JS disable the Apply button and show a spinner with *Connecting…*, which also stops a double click; only the button is disabled, because disabled inputs are not sent. The greeting is a YAML template, so `apply()` makes no LLM call and the wait is short.
-- **No fake timing in the chat.** The typing indicator lasts exactly as long as the request. For a demo on the FakeLLM, which answers instantly, `FAKE_LLM_LATENCY_MS` makes each FakeLLM reply wait; the real adapter never reads it.
-- **The priority score is a pure function of the valid fields, never the LLM.** `priority_score(state, scoring, today)` in `app/domain/scoring.py` gives 0 to 100 points: shift match 50, as availability overlapping the open shifts' availability (30) plus a schedule in the open shifts or `flexible` (20); start date 30, full up to 7 days then linear down to 0 at 90 days; experience 20, as min(years, 5) / 5 of the weight (× 4 at weight 20). A field that is missing, incomplete or needs review scores 0 on its component. The weights (which must add up to 100) and the open shifts come from the `scoring` block of the YAML; the 7-day, 90-day and 5-year thresholds are domain constants. The score is recomputed on every turn (and set at application), from the `Clock`'s today, and stored on the candidate: the total in a `score` column for sorting, the points per field in `score_json` for the breakdown shown on the candidate detail. The sweep recomputes the score of every open candidate, so the start-date points of a candidate who stops writing keep moving.
-- **The service area is matched by code; the LLM only extracts the place as said.** The extraction gives the city and the zone (a district or nearby town) in the candidate's words; `validate_service_area()` matches them against the YAML `service_areas` (country → city → zones) after normalization (lowercase, accents and punctuation removed). An exact city or zone is in area; a close match (`difflib` ratio ≥ 0.85) or a zone shared by two cities (Centro) is confirmed first with the same `Confirm` action as an unsure value. The LLM is not asked to pick from the list: it tends to map an unlisted town to the nearest listed city, and a knock-out must be testable without it.
-- **The city is the knock-out unit; an unknown place gets one follow-up asking for the city.** A city not on the list is outside and proposes a rejection (`outside_service_area`); a listed city with an unknown zone is in area with a `zone_unknown` flag. A zone alone that matches nothing gets one follow-up for the city, keeping the zone; still no city, the field is needs review, since it decides a knock-out. The field stores country, city, zone and `in_service_area`; the city is also a `city` column on the candidate, shown in the queue. A confirmed `outside_service_area` rejection carries `offer_contact`, so the message offers to get back in touch if a nearby location opens.
-- **Code decides the recruiter handoff; the LLM only phrases the summary.** `recruiter_action()` in `app/domain/summary.py` gives the next action from the status: Qualified → call within the YAML `call_within_hours`; Qualified to review → check the needs-review fields (or the answers, when only the recap went unconfirmed); Rejection proposed → confirm or override; otherwise none. It is computed on read, so the queue and the detail never show a stale one. `summary_facts()` gathers the valid field values, the needs-review fields, the flags, the status, the failed rule and the next action; `summarize` phrases them in the client's default language, since the reader is a recruiter.
-- **A summary is written when the questions stop, and stored with its facts.** On the switch to Qualified, Qualified to review, Rejection proposed or Withdrawn, not on a recruiter's Confirm. An override that resumes the screening clears it, and a new one is written when the questions stop again (an override landing on another failed knock-out writes one right away). The text and the facts sit in `summary_json`, so a recruiter can check what the LLM was given. A summarize failure never breaks the turn: the reply is still sent, the text stays empty, the facts are kept and the candidate gets the `llm_failure` flag.
-- **Code checks the summary before it is stored.** The summarize prompt asks for 3 lines (key data, points of attention, next action) phrased only from the facts. An output validator in the PydanticAI adapter counts the non-empty lines and the characters: more than 3 lines or 600 characters raises `ModelRetry`, so the LLM gets one retry with the reason fed back. A second failure reaches the service like any LLM error: the text stays empty, the facts are kept and the candidate is flagged `llm_failure`. The limits keep the summary readable in the queue; checking that it adds nothing beyond the facts is left to the prompt and the evals.
-- **A silent screening is handled by a sweep, `ScreeningService.tick()`.** It reads the time only from the `Clock` and, for each open candidate, recomputes the priority score; for a screening in progress whose last question is unanswered, `due_step()` in `app/domain/reengagement.py` (a pure function) says which Nudge or the deadline is due. The delays (1, 20, 48 h, deadline 72 h) are in the YAML, counted from the last unanswered agent question, which `silence()` finds from the messages and the `nudge_sent` events: the nudges are the agent messages after it, so a Nudge never restarts them, and each is sent once (a `nudge_sent` event with its number). After a long gap only the latest due Nudge goes out. Nothing is sent in Rejection proposed, in an outcome, or before consent. In production a scheduler (cron) calls it; here the dev route does.
-- **Nudges are fixed YAML templates, not LLM replies.** One per delay and language in `templates.nudges`, with the first name and the questions left (open fields plus the recap); the loader rejects a config without one template per delay in every language. A fixed text needs no LLM call from a background job, cannot fail, and maps to the pre-approved templates WhatsApp requires outside its 24 h window.
-- **At the deadline, code picks the ending.** `silent_outcome()` gives Qualified to review, with its summary, when every field is answered (valid or needs review) and only the recap is left; a correction left unconfirmed keeps the valid value. Any field left: Abandoned, keeping the stage for the drop-off analytics (`abandoned` event), with no summary and no message (the third Nudge was the last one). A greeting never answered: the candidate, messages and events are erased like a declined consent, and only a row with the client id and the time goes to `consent_drop_offs`.
-- **Reopen is a recruiter action with a fixed message.** `RecruiterService.reopen()` only accepts an Abandoned candidate (409 otherwise, like Confirm and Override), sets it back to In progress at the stage it stopped at, records a `reopened` event and sends `templates.reopen` in the candidate's language, with no LLM call so it cannot fail. The template is not a yes/no question: the candidate's next message is extracted against the question the screening stopped at. `silence()` starts a new silence at the latest `reopened` event, so the Nudges and the 72 h deadline restart from the reopen message, and the candidate's next reply gets the `resuming` cue.
-- **Reply cues: code tells the LLM how to phrase around the action, never which action.** `LLMPort.reply` takes a set of cues chosen by code, each with one instruction in the reply prompt; the action and `next_action()` are unchanged, and the output guardrails still apply. The first is `resuming`: a candidate who writes back after a Nudge (one counted by `silence()` since their last message), a recruiter's Reopen or Abandoned gets a reply opening with one line on where the screening stands (the questions left, computed by code), in place of the acknowledgment so it fits the 2-sentence limit; a resuming re-ask drops its example for the same reason, and a closing message (an opt-out or a knock-out in the same message) gets no cue. An Abandoned candidate who writes back is set back to In progress with a `resumed` event, only if the turn succeeds; the screening continues at the stage it stopped at, since the next action is derived from the state. Every other outcome keeps the fixed after-close reply.
-- **A candidate's question is forwarded to a recruiter, never answered: no FAQ.** The extraction's `question` intent carries the question as said, and the fields are still extracted from the same message ("¿cuánto se paga? vivo en Getafe" keeps the area). Code adds the `question_for_recruiter` flag (shown in the queue) and a `question_forwarded` event with the text (shown on the candidate detail), and the reply for the pending action gets the `question_forwarded` cue: one short line saying the question is passed on, in place of the acknowledgment, then the pending question again, without the re-ask example. A message that is only a question uses no attempt: not on the field asked, not on a confirmation (the value to confirm is kept), not on the recap. A FAQ would let the agent state pay or conditions the client has not approved in writing, and a wrong answer there is a promise; a recruiter answering on the call costs nothing extra. A closing message gets no cue, nor does a frustrated one (its call offer takes the opening line), but the question is still flagged.
-- **Sentiment is read by the LLM and acted on by code.** The extraction gains `sentiment` (`neutral`, `confused`, `frustrated`) and `call_requested`; code picks the cues and the flags, the action is unchanged. `confused` gets the `confused` cue (simpler wording and one example). `frustrated` adds the `frustrated` flag and gets the `frustrated` cue, which acknowledges it and offers to talk to a person as a statement, not a question, so the reply still asks only the pending question; it replaces `resuming`, since both open the reply. A later `call_requested` yes, only once a call was offered, adds the `wants_human` flag and a `call_requested` event, uses no attempt, and stops the offer; the recruiter next action for an In progress candidate with it is "Call: the candidate asked for it" while the screening goes on. A call request with no offer is ignored, so a bare yes to a question is never read as one.
-- **Abuse proposes a rejection, it never closes the screening (ADR 0003).** The extraction intent gains `abuse` (insults, insistent off-topic, attempts to steer the agent); an abusive message is not read as an answer (no field is kept and no attempt is used, so an injection cannot slip values in), it only increments `abuse_count` on the state and records an `abuse` event. The first one gets the `refocus` cue on the pending action, and only that cue: no welcome back, and no call offer even when it reads as frustrated (the sentiment of an abusive message is not applied). `next_action()` stops at `ABUSE_LIMIT` (2): after consent it returns the proposed-rejection close with the rule `abuse` and no field, checked before the knock-outs, and the proposal event records the message as the answer; before consent it is a declined consent, so the candidate is erased. Confirm sends a rejection that gives no reason and cites no requirement of the position; Override resets the count (a knock-out override sets the rule aside for good instead), so a new abuse gets a refocus again. The queue and the detail label it "Abuse", apart from a failed knock-out.
-- **No quiet hours and no time zones (known limit, see the process design).** The sweep sends a Nudge as soon as it is due, in UTC, so it can reach a candidate at night. Adding it means a time zone per country in the YAML and holding a due Nudge until the window opens.
-- **Every LLM call's token usage is recorded as an `llm_call` event.** `extract`, `reply` and `summarize` return an `LLMResult` (the output and an `LLMUsage` with input and output tokens); the PydanticAI adapter fills it from the run, so an output retry is counted, and the FakeLLM returns zero. The services record one event per successful call with the call name and the tokens, right after the call: an extraction whose reply then fails still counts, since its tokens were spent. A failed call raises before any usage is known and is recorded as `llm_failure` only. So the cost per candidate can be summed from real usage rather than estimated.
-- **The Impact tab computes the section 1 metrics on read, over the last 30 days.** `RecruiterService.impact()` takes the candidates who applied in the window, their messages and `llm_call` events, and the consent drop-offs of the window (counted at the deadline, so from 30 days minus `deadline_hours` ago); the JSON route `/api/impact` and the dashboard's Impact tab both call it. A Completed screening is Qualified, Qualified to review, Rejection proposed or Rejected (see `CONTEXT.md`). The definitions: **completion rate** = Completed screenings / candidates who gave consent; **time to first message** = the average delay from the application to the first agent message; **recruiter hours saved per week** = (Completed screenings + contacted candidates × unanswered call attempts per candidate) × average call duration, scaled from 30 days to a week, where contacted includes the consent drop-offs and each unanswered attempt counts as a full call slot, since it takes one of a recruiter's daily calls; **recruiter time on qualified candidates** (an estimate, labelled so) = Qualified and Qualified to review / Completed screenings, assuming a recruiter spends as long on each; **needs-review share** = Completed screenings with a needs-review field / Completed screenings; **LLM cost per candidate** = the recorded tokens priced per million / candidates in the window. Each figure sits next to today's phone value and the pilot target, both from the YAML `impact` block: the completion baseline is 1 − the no-answer rate (40%), the qualified-time baseline 1 − the unqualified-time share (20%), the hours baseline the recruiters' weekly call time (13 × 15 calls × 5 days × the call duration), and the cost baseline one recruiter call (call duration × hourly cost). A ratio with nothing to divide by shows "—". A declined consent is erased with its events, so its tokens are not counted.
-- **Evals: code checks what it can decide, an LLM judge only tone and forbidden topics.** `evals/checks.py` asserts per persona the status, the rule of a proposed rejection, field statuses and values, flags, events and language, that no LLM call fell back, and the message rules on every reply the candidate got (checked again on the output rather than trusted to the adapter's guardrails; the recap is exempt from the length rules). The judge scores tone and forbidden topics from 1 to 5 with a reason; it never decides a pass, since its scores vary between runs. The candidate is a PydanticAI agent given the profile and the transcript each turn, at temperature 0.7 so wording varies; the judge runs at 0. The eval model is fixed to gpt-6-luna, independent of `LLM_MODEL`, so changing the agent's model does not change who plays and judges it. A run's transcript is kept as it goes, so an erased candidate (a declined consent) still has one to read.
-- **The queue is sorted by priority score, then by last activity.** Status tabs cover every status; Rejection proposed is labelled "To confirm". The dashboard has no authentication in v0.
+- **Code decides, the LLM understands and phrases.** Stage order, knock-outs, outcomes and scoring are pure Python; the LLM only extracts data from the candidate's message and writes the reply for an action code already chose, so the flow is testable without a model and an injection cannot change it.
+- **The next action is derived from field state, not stored as a stage pointer** ([ADR 0001](docs/adr/0001-derive-next-action-from-field-state.md)). `next_action(state, config)` is a pure function, so corrections, volunteered answers and recruiter overrides need no stage bookkeeping.
+- **Three ports only, and the FakeLLM when `LLM_MODEL` is empty.** `LLMPort`, `CandidateRepository` and `Clock` keep the domain and services free of I/O; tests, demos and CI run the whole flow offline without a key.
+- **The LLM port stays synchronous** ([ADR 0002](docs/adr/0002-keep-the-llm-port-synchronous.md)). Messages go out whole and guardrails check the full reply, so there is nothing to stream; async end to end is the path when volume grows.
+- **A turn never fails and an LLM failure leaves the state unchanged.** Each call has a timeout and one retry with the validation error fed back; after that the candidate gets the fallback template, the conversation is flagged `llm_failure`, and the next message gets the same question.
+- **Replies are checked by code before the candidate sees them.** A reply over 2 sentences or 300 characters, or with more than one question, gets one retry with the reason; the candidate message reaches the extract prompt capped and delimited, as data, never as instructions.
+- **A knock-out never rejects on its own.** A validated "no" proposes a rejection that a recruiter confirms or overrides, and an unclear answer goes to needs review, so no candidate is turned away by a misread message. Abuse follows the same path ([ADR 0003](docs/adr/0003-abuse-proposes-a-rejection.md)).
+- **Unsure values and corrections wait on the candidate's yes.** A value below the YAML `confidence_threshold`, or a change to a valid field, is confirmed before it counts, with one rule everywhere in the flow.
+- **The service area and the priority score are computed by code.** The LLM extracts the place as said and code matches it against the YAML areas, since a knock-out must be testable without a model; the 0-100 score is a pure function of the valid fields.
+- **Silence is handled by a sweep with fixed YAML Nudges.** `tick()` reads time only from the `Clock` and sends pre-written templates (no LLM call, so a background job cannot fail, and WhatsApp requires approved templates anyway); at 72 h code picks the ending.
+- **A candidate's question is forwarded to a recruiter, never answered.** A FAQ would let the agent promise pay or conditions the client never approved in writing; the question is flagged in the queue instead.
+- **Evals: code checks what it can decide, an LLM judge only scores tone.** Status, fields, flags and message rules are asserted by code; the judge's scores vary between runs, so they never decide a pass.
 
 ## ATS integration
 
