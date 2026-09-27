@@ -139,3 +139,13 @@ def test_a_question_before_consent_asks_for_the_consent_again():
 
     assert reply == "[fake] greet +question_forwarded"
     assert screening.repo.get_by_handle("grupo_sazon", "34600999888").state.consent is None
+
+
+def test_a_frustrated_question_gets_the_call_offer_and_is_still_forwarded():
+    screening = consented()
+    screening.llm.queue(asks(sentiment="frustrated"))
+
+    reply = screening.service.handle_message(HANDLE, f"qué pesado, {QUESTION}")
+
+    assert reply == "[fake] ask:name (attempt 0) +frustrated"
+    assert len(screening.events("question_forwarded")) == 1

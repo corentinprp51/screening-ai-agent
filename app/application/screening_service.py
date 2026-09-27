@@ -151,15 +151,14 @@ class ScreeningService:
             action = next_action(candidate.state, self._config)
             # The candidate message is stored after the LLM calls, but the reply follows it.
             recent = [*messages, self._message(candidate, "candidate", text)][-RECENT_MESSAGES:]
-            cues: set[Cue] = set()
             # A closing message is not a welcome back, nor does it go back to a question.
-            if not isinstance(action, Close):
-                if resuming:
-                    cues.add("resuming")
-                if extraction.intent == "question":
-                    cues.add("question_forwarded")
+            cues = (
+                frozenset()
+                if isinstance(action, Close)
+                else self._cues(candidate, extraction, resuming)
+            )
             reply, usage = self._llm.reply(
-                action, candidate.state, candidate.state.language, recent, frozenset(cues)
+                action, candidate.state, candidate.state.language, recent, cues
             )
             self._record_llm_call(candidate, "reply", usage)
         except Exception as error:
@@ -190,6 +189,21 @@ class ScreeningService:
         self._repo.save(candidate)
         self._send(candidate, reply)
         return reply
+
+    def _cues(self, candidate: Candidate, extraction: Extraction, resuming: bool) -> frozenset[Cue]:
+        """How the reply is phrased. Frustration replaces the welcome back and the forwarded
+        question: they all open the reply (the question is still forwarded). A candidate who
+        already asked for a call is not offered it again."""
+        if extraction.sentiment == "frustrated" and "wants_human" not in candidate.state.flags:
+            return frozenset({"frustrated"})
+        cues: set[Cue] = set()
+        if resuming:
+            cues.add("resuming")
+        if extraction.intent == "question":
+            cues.add("question_forwarded")
+        if extraction.sentiment == "confused":
+            cues.add("confused")
+        return frozenset(cues)
 
     def _nudged_or_reopened_since_last_message(
         self, candidate: Candidate, messages: list[Message]
@@ -314,6 +328,7 @@ class ScreeningService:
             state.add_flag("question_for_recruiter")
             question = extraction.question or text
             events.append(self._event(candidate, "question_forwarded", question=question))
+        call_accepted = self._apply_sentiment(candidate, extraction, events)
         match pending:
             case Greet():
                 if extraction.yes_no is not None:
@@ -325,7 +340,8 @@ class ScreeningService:
                 changed_others = self._apply_fields(
                     candidate, others, extraction, pending, text, events
                 )
-                # A message only about other fields (e.g. a correction) uses no attempt.
+                # A message only about other fields (e.g. a correction) or accepting the call
+                # uses no attempt.
                 self._apply_field(
                     candidate,
                     asked,
@@ -333,7 +349,7 @@ class ScreeningService:
                     pending,
                     text,
                     events,
-                    uses_attempt=not (changed_others or asking),
+                    uses_attempt=not (changed_others or asking or call_accepted),
                 )
             case Confirm(field=confirmed):
                 # A new value instead of a yes is validated like any other answer.
@@ -358,6 +374,21 @@ class ScreeningService:
                     state.recap_confirmed = True
                 elif not only_a_question:
                     state.recap_attempts += 1
+
+    def _apply_sentiment(
+        self, candidate: Candidate, extraction: Extraction, events: list[Event]
+    ) -> bool:
+        """Flag a frustrated candidate, whose reply offers a call. A yes to that offer asks the
+        recruiter for a call and the screening goes on; True when it is accepted now."""
+        state = candidate.state
+        offered = "frustrated" in state.flags and "wants_human" not in state.flags
+        call_accepted = offered and extraction.call_requested is True
+        if call_accepted:
+            state.add_flag("wants_human")
+            events.append(self._event(candidate, "call_requested"))
+        if extraction.sentiment == "frustrated":
+            state.add_flag("frustrated")
+        return call_accepted
 
     def _apply_fields(
         self,

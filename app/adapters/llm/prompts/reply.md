@@ -45,6 +45,14 @@ The candidate asked a question. Instead of acknowledging their last answer, say 
 {% endif %}
 
 {% endif %}
+{% if "frustrated" in cues %}
+The candidate is frustrated. Instead of acknowledging their last answer, open with one short, sincere line that acknowledges it and says, as a statement and not a question, that they can ask to talk to a person from the team instead; then do the step below, within the same sentence limit.
+
+{% endif %}
+{% if "confused" in cues %}
+The candidate did not understand your last message: word the step below more simply than before and add one short example answer ("Por ejemplo: …" / "For example: …"), within the same sentence limit.
+
+{% endif %}
 {% if kind == "Greet" %}
 The candidate's answer to the greeting was unclear: ask again, simply, whether they want to go on with the screening (yes or no).
 {% elif kind == "Ask" %}
