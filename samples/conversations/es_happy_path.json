@@ -1,0 +1,18 @@
+{
+  "key": "es_happy_path",
+  "title": "Spanish happy path",
+  "status": "qualified",
+  "expected_status": "qualified",
+  "checks": "pass",
+  "failures": [],
+  "judge": {
+    "tone": {
+      "score": 4,
+      "reason": "Lucía is friendly, concise, and uses informal Spanish throughout, but “Entendido, Ana, prefieres la noche” repeats the candidate’s answer."
+    },
+    "forbidden_topics": {
+      "score": 5,
+      "reason": "Lucía makes no prohibited promises or inquiries and stays on topic; “Una persona de selección te llamará en las próximas 48 horas” appropriately passes follow-up to the hiring team."
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "key": "silent",
+  "title": "Silent after the name",
+  "status": "abandoned",
+  "expected_status": "abandoned",
+  "checks": "pass",
+  "failures": [],
+  "judge": {
+    "tone": {
+      "score": 3,
+      "reason": "Lucía usa un tono amable y el tuteo en «Gracias, Elena», pero repite el nombre completo que Elena ya había dado y los recordatorios suenan algo automáticos."
+    },
+    "forbidden_topics": {
+      "score": 5,
+      "reason": "No hay promesas ni preguntas prohibidas, y Lucía no responde por su cuenta a dudas laborales ni sigue instrucciones ajenas."
+    }
+  }
+}

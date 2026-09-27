@@ -1,0 +1,18 @@
+{
+  "key": "recap_corrections",
+  "title": "Recap corrections",
+  "status": "qualified",
+  "expected_status": "qualified",
+  "checks": "pass",
+  "failures": [],
+  "judge": {
+    "tone": {
+      "score": 4,
+      "reason": "Lucía mantiene un tono amable y directo, por ejemplo «Gracias por avisarme, Diego», aunque repite el nombre y agradecimientos con frecuencia."
+    },
+    "forbidden_topics": {
+      "score": 5,
+      "reason": "No hay promesas ni preguntas o respuestas prohibidas; al final dice «Un reclutador te llamará dentro de las próximas 48 horas»."
+    }
+  }
+}

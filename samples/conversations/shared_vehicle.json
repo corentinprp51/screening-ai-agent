@@ -1,0 +1,18 @@
+{
+  "key": "shared_vehicle",
+  "title": "Shared vehicle",
+  "status": "qualified_to_review",
+  "expected_status": "qualified_to_review",
+  "checks": "pass",
+  "failures": [],
+  "judge": {
+    "tone": {
+      "score": 4,
+      "reason": "Lucía mantiene un tono cálido, directo y en español, por ejemplo «Entiendo, Marta»; sin embargo, repite con frecuencia las respuestas al tomar nota, como «tomo nota de los fines de semana»."
+    },
+    "forbidden_topics": {
+      "score": 5,
+      "reason": "No hay promesas de empleo o salario, preguntas prohibidas ni instrucciones del candidato que siga; al final solo indica que «La selección te llamará en un plazo de 48 horas»."
+    }
+  }
+}

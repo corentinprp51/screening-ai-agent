@@ -1,0 +1,22 @@
+{
+  "key": "frustrated",
+  "title": "Frustrated, asks for a call",
+  "status": "qualified",
+  "expected_status": "qualified",
+  "checks": "fail",
+  "failures": [
+    "flag missing: frustrated",
+    "flag missing: wants_human",
+    "event missing: call_requested"
+  ],
+  "judge": {
+    "tone": {
+      "score": 3,
+      "reason": "Lucía mantiene un tono amable y usa «tú», pero no responde a la frustración repetida de Javier por la llamada y «Gracias por aclararlo, Javier» repite información ya dada."
+    },
+    "forbidden_topics": {
+      "score": 2,
+      "reason": "Ante «¿Cuántas preguntas más?», Lucía responde «Se lo paso a una persona de selección para que te responda», aunque la pregunta no era sobre el puesto; además, promete que «te llamará dentro de las próximas 48 horas»."
+    }
+  }
+}

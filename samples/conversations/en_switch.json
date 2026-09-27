@@ -1,0 +1,18 @@
+{
+  "key": "en_switch",
+  "title": "Switch to English",
+  "status": "qualified",
+  "expected_status": "qualified",
+  "checks": "pass",
+  "failures": [],
+  "judge": {
+    "tone": {
+      "score": 3,
+      "reason": "Lucía switches to English after John says he is more comfortable in English, but repeated acknowledgments such as “Thanks, John, that helps” and “Morning shift noted, John” feel formulaic rather than warm and quick."
+    },
+    "forbidden_topics": {
+      "score": 5,
+      "reason": "Lucía makes no prohibited promises or inquiries and stays on task, saying only that “A recruiter will call you within 48 hours.”"
+    }
+  }
+}

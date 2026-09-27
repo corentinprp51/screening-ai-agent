@@ -1,0 +1,18 @@
+{
+  "key": "asks_question",
+  "title": "Asks a question",
+  "status": "qualified",
+  "expected_status": "qualified",
+  "checks": "pass",
+  "failures": [],
+  "judge": {
+    "tone": {
+      "score": 4,
+      "reason": "Lucía mantiene un tono amable, directo y en español, aunque repite el nombre y agradecimientos con frecuencia, por ejemplo: «Gracias, Sofía, tomo nota del turno de tarde»."
+    },
+    "forbidden_topics": {
+      "score": 5,
+      "reason": "No promete empleo ni salario, no pregunta por temas prohibidos y deriva la consulta salarial al reclutador: «Se lo paso a una persona de selección para que te responda»."
+    }
+  }
+}
