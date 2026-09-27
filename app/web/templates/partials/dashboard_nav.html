@@ -1,0 +1,9 @@
+<nav class="flex flex-wrap gap-2 mb-4 text-sm">
+  {% set tab = "rounded-full px-3 py-1 border" %}
+  <a href="/dashboard" class="{{ tab }} {{ 'bg-slate-900 text-white' if current is none else 'bg-white' }}">All</a>
+  {% for status, label in status_labels.items() %}
+  <a href="/dashboard?status={{ status.value }}"
+     class="{{ tab }} {{ 'bg-slate-900 text-white' if current == status else 'bg-white' }}">{{ label }}</a>
+  {% endfor %}
+  <a href="/dashboard/impact" class="{{ tab }} {{ 'bg-slate-900 text-white' if current == 'impact' else 'bg-white' }}">Impact</a>
+</nav>

@@ -1,7 +1,8 @@
-"""The recruiter side: the candidate queue, a candidate's detail, and confirming or
-overriding a proposed rejection."""
+"""The recruiter side: the candidate queue, a candidate's detail, confirming or
+overriding a proposed rejection, and the Impact view."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Literal
 
 from pydantic import BaseModel, JsonValue
 
@@ -87,6 +88,40 @@ class CandidateDetail(BaseModel):
     next_action: str | None = None
     messages: list[Message]
     events: list[Event]
+
+
+# The Impact view covers the pilot period.
+IMPACT_DAYS = 30
+# A completed screening: the questions stopped with the candidate still engaged.
+COMPLETED = (
+    Status.QUALIFIED,
+    Status.QUALIFIED_TO_REVIEW,
+    Status.REJECTION_PROPOSED,
+    Status.REJECTED,
+)
+
+
+class Metric(BaseModel):
+    """One section 1 figure, next to today's phone baseline and the pilot target. `value`
+    is None when there is nothing to count yet."""
+
+    name: str
+    label: str
+    unit: Literal["share", "minutes", "hours", "money"]
+    value: float | None
+    baseline: float | None = None
+    target: float | None = None
+    note: str
+
+
+class Impact(BaseModel):
+    since: datetime
+    currency: str
+    candidates: int  # applied since, still kept (a declined consent is erased)
+    consent_drop_offs: int  # greetings left unanswered, erased and only counted
+    consented: int
+    completed: int
+    metrics: list[Metric]
 
 
 class RecruiterService:
@@ -196,6 +231,129 @@ class RecruiterService:
             candidate.summary = None  # a new one is written when the questions stop again
         self._send(candidate, reply)
 
+    def impact(self) -> Impact:
+        """The section 1 metrics over the last 30 days, from the candidates who applied
+        since, their messages and events, and the consent drop-offs."""
+        baselines = self._config.impact
+        since = self._clock.now() - timedelta(days=IMPACT_DAYS)
+        candidates = [
+            candidate
+            for candidate in self._repo.list_candidates(self._config.client_id)
+            if candidate.created_at >= since
+        ]
+        drop_offs = self._repo.count_consent_drop_offs(self._config.client_id, since)
+        consented = [c for c in candidates if c.state.consent]
+        completed = [c for c in candidates if c.status in COMPLETED]
+        qualified = [
+            c for c in completed if c.status in (Status.QUALIFIED, Status.QUALIFIED_TO_REVIEW)
+        ]
+        needs_review = [
+            c
+            for c in completed
+            if any(field.status == "needs_review" for field in c.state.fields.values())
+        ]
+
+        first_message_delays = [
+            (first.created_at - c.created_at).total_seconds() / 60
+            for c in candidates
+            if (first := next(iter(self._repo.list_messages(c.id)), None))
+        ]
+        call_hours = baselines.call_minutes / 60
+        # Every contacted candidate would have been called: a completed screening saves
+        # its call, and each unanswered attempt saves a call slot.
+        contacted = len(candidates) + drop_offs
+        saved_calls = len(completed) + contacted * baselines.unanswered_calls_per_candidate
+        calls_per_week = (
+            baselines.recruiters
+            * baselines.calls_per_recruiter_per_day
+            * baselines.working_days_per_week
+        )
+        llm_cost = sum(self._llm_cost(c) for c in candidates)
+
+        return Impact(
+            since=since,
+            currency=baselines.currency,
+            candidates=len(candidates),
+            consent_drop_offs=drop_offs,
+            consented=len(consented),
+            completed=len(completed),
+            metrics=[
+                Metric(
+                    name="completion_rate",
+                    label="Completion rate",
+                    unit="share",
+                    value=_ratio(len(completed), len(consented)),
+                    baseline=1 - baselines.no_answer_rate,
+                    target=baselines.targets.completion_rate,
+                    note="Completed screenings out of the candidates who gave consent.",
+                ),
+                Metric(
+                    name="first_message_minutes",
+                    label="Time from application to first message",
+                    unit="minutes",
+                    value=_ratio(sum(first_message_delays), len(first_message_delays)),
+                    target=baselines.targets.first_message_minutes,
+                    note="Average delay of the greeting after the application.",
+                ),
+                Metric(
+                    name="hours_saved_per_week",
+                    label="Recruiter hours saved per week",
+                    unit="hours",
+                    value=saved_calls * call_hours * 7 / IMPACT_DAYS,
+                    baseline=calls_per_week * call_hours,
+                    note=(
+                        "Completed screenings plus the unanswered call attempts avoided, "
+                        "times the average call; the baseline is the recruiters' weekly "
+                        "call time."
+                    ),
+                ),
+                Metric(
+                    name="qualified_time_share",
+                    label="Recruiter time on qualified candidates (estimate)",
+                    unit="share",
+                    value=_ratio(len(qualified), len(completed)),
+                    baseline=1 - baselines.unqualified_time_share,
+                    target=baselines.targets.qualified_time_share,
+                    note=(
+                        "Qualified and Qualified to review out of the completed screenings, "
+                        "assuming a recruiter spends as long on each."
+                    ),
+                ),
+                Metric(
+                    name="needs_review_share",
+                    label="Screenings with a field to review",
+                    unit="share",
+                    value=_ratio(len(needs_review), len(completed)),
+                    target=baselines.targets.needs_review_share,
+                    note="Completed screenings with at least one needs-review field.",
+                ),
+                Metric(
+                    name="llm_cost_per_candidate",
+                    label="LLM cost per candidate",
+                    unit="money",
+                    value=_ratio(llm_cost, len(candidates)),
+                    baseline=call_hours * baselines.recruiter_hourly_cost,
+                    note=(
+                        "Recorded token usage priced with the config; the baseline is one "
+                        "recruiter call."
+                    ),
+                ),
+            ],
+        )
+
+    def _llm_cost(self, candidate: Candidate) -> float:
+        """The candidate's recorded `llm_call` tokens, priced with the config."""
+        prices = self._config.impact.llm_price_per_million_tokens
+        usages = [
+            LLMUsage.model_validate(event.payload)
+            for event in self._repo.list_events(candidate.id)
+            if event.type == "llm_call"
+        ]
+        return sum(
+            (usage.input_tokens * prices.input + usage.output_tokens * prices.output) / 1_000_000
+            for usage in usages
+        )
+
     def _get(self, candidate_id: int) -> Candidate:
         candidate = self._repo.get(candidate_id)
         if candidate is None or candidate.client_id != self._config.client_id:
@@ -271,3 +429,7 @@ class RecruiterService:
 
     def _record_llm_call(self, candidate: Candidate, call: str, usage: LLMUsage) -> None:
         self._record(candidate, "llm_call", call=call, **usage.model_dump())
+
+
+def _ratio(part: float, whole: float) -> float | None:
+    return part / whole if whole else None

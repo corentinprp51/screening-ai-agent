@@ -60,6 +60,27 @@ scoring:
     availability: [full_time, weekends]
     schedule: [evening]
 
+# The Impact tab (process design section 1): today's phone screening, shown next to each
+# figure of the last 30 days, and the pilot targets. Initial values, to agree with the client.
+impact:
+  currency: EUR
+  recruiters: 13
+  calls_per_recruiter_per_day: 15
+  working_days_per_week: 5
+  call_minutes: 15 # average screening call
+  unanswered_calls_per_candidate: 1.5 # attempts that reach no one; each takes a call slot
+  no_answer_rate: 0.6 # candidates never reached by phone
+  unqualified_time_share: 0.8 # recruiter time spent on unqualified candidates
+  recruiter_hourly_cost: 20
+  llm_price_per_million_tokens:
+    input: 0.4
+    output: 1.6
+  targets:
+    completion_rate: 0.6
+    first_message_minutes: 5
+    qualified_time_share: 0.8
+    needs_review_share: 0.1
+
 templates:
   greeting:
     es: >-
