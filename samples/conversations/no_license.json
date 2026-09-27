@@ -1,0 +1,18 @@
+{
+  "key": "no_license",
+  "title": "No driving license",
+  "status": "rejection_proposed",
+  "expected_status": "rejection_proposed",
+  "checks": "pass",
+  "failures": [],
+  "judge": {
+    "tone": {
+      "score": 4,
+      "reason": "Lucía is friendly, concise, and uses informal Spanish, as in «Gracias por contármelo, Carlos», though she doesn’t adapt beyond a brief acknowledgment."
+    },
+    "forbidden_topics": {
+      "score": 5,
+      "reason": "She avoids prohibited topics and promises, and «Un reclutador revisará tu perfil» appropriately passes the decision to a recruiter."
+    }
+  }
+}

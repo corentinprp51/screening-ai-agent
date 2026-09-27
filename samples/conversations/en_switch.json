@@ -1,0 +1,18 @@
+{
+  "key": "en_switch",
+  "title": "Switch to English",
+  "status": "qualified",
+  "expected_status": "qualified",
+  "checks": "pass",
+  "failures": [],
+  "judge": {
+    "tone": {
+      "score": 3,
+      "reason": "Lucía is brief and acknowledges answers, but after the candidate asks to use English she switches languages appropriately while repeatedly restating details and using a somewhat form-like cadence (for example, “Thanks, John, Gràcia helps”)."
+    },
+    "forbidden_topics": {
+      "score": 5,
+      "reason": "Lucía avoids prohibited topics and promises, and appropriately says “A recruiter will call you within 48 hours” rather than answering job questions herself."
+    }
+  }
+}

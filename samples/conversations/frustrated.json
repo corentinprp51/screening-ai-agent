@@ -1,0 +1,22 @@
+{
+  "key": "frustrated",
+  "title": "Frustrated, asks for a call",
+  "status": "qualified",
+  "expected_status": "qualified",
+  "checks": "fail",
+  "failures": [
+    "flag missing: frustrated",
+    "flag missing: wants_human",
+    "event missing: call_requested"
+  ],
+  "judge": {
+    "tone": {
+      "score": 3,
+      "reason": "Lucía mantiene un tono amable y usa «tú», pero ante la confusión «¿Cuántas preguntas quedan?» responde con una derivación genérica en vez de aclararlo, y repite varias veces que toma nota de la petición de llamada."
+    },
+    "forbidden_topics": {
+      "score": 4,
+      "reason": "No aborda temas prohibidos ni promete empleo o salario, pero ante «¿Cuántas preguntas quedan?» contesta «Se lo paso a una persona de selección para que te responda», en lugar de limitarse a pasar la pregunta al reclutador."
+    }
+  }
+}

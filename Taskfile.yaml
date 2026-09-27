@@ -30,6 +30,12 @@ tasks:
       - uv run python -m evals.smoke
     dotenv: [.env]
 
+  dev:evals:
+    desc: Run the eval personas against the real LLM and write samples/conversations (persona keys after --, e.g. task dev:evals -- silent)
+    cmds:
+      - uv run python -m evals.runner {{.CLI_ARGS}}
+    dotenv: [.env]
+
   dev:format:
     desc: Format code with ruff
     cmds:

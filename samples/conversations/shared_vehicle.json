@@ -1,0 +1,18 @@
+{
+  "key": "shared_vehicle",
+  "title": "Shared vehicle",
+  "status": "qualified_to_review",
+  "expected_status": "qualified_to_review",
+  "checks": "pass",
+  "failures": [],
+  "judge": {
+    "tone": {
+      "score": 4,
+      "reason": "Lucía is friendly, concise, and uses informal Spanish throughout; “Gracias por aclararlo, Marta” adapts well, though the repeated “Gracias, Marta” acknowledgments feel somewhat formulaic."
+    },
+    "forbidden_topics": {
+      "score": 5,
+      "reason": "Lucía avoids prohibited topics and promises, and appropriately says “Una persona del equipo de selección te llamará en un plazo de 48 horas” rather than answering job questions herself."
+    }
+  }
+}

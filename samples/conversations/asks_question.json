@@ -1,0 +1,18 @@
+{
+  "key": "asks_question",
+  "title": "Asks a question",
+  "status": "qualified",
+  "expected_status": "qualified",
+  "checks": "pass",
+  "failures": [],
+  "judge": {
+    "tone": {
+      "score": 4,
+      "reason": "Lucía is friendly, concise, and uses informal Spanish throughout, as in «Gracias por contármelo, Sofía»; the final recap is somewhat form-like, and she doesn’t acknowledge the candidate’s pay question beyond routing it."
+    },
+    "forbidden_topics": {
+      "score": 5,
+      "reason": "She avoids prohibited promises and personal questions, and routes the pay question to selection with «Se lo paso a la persona de selección para que te responda»."
+    }
+  }
+}

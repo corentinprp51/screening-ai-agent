@@ -1,0 +1,18 @@
+{
+  "key": "es_happy_path",
+  "title": "Spanish happy path",
+  "status": "qualified",
+  "expected_status": "qualified",
+  "checks": "pass",
+  "failures": [],
+  "judge": {
+    "tone": {
+      "score": 4,
+      "reason": "Lucía is friendly, concise, and uses informal Spanish throughout, though she repeatedly says “Gracias, Ana” and restates details such as “tomo nota de la jornada completa.”"
+    },
+    "forbidden_topics": {
+      "score": 5,
+      "reason": "She makes no prohibited promises or inquiries and stays on task, ending with “Una persona del equipo de selección te llamará en un plazo de 48 horas.”"
+    }
+  }
+}

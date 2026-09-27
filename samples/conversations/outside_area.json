@@ -1,0 +1,18 @@
+{
+  "key": "outside_area",
+  "title": "Outside the service area",
+  "status": "rejection_proposed",
+  "expected_status": "rejection_proposed",
+  "checks": "pass",
+  "failures": [],
+  "judge": {
+    "tone": {
+      "score": 4,
+      "reason": "Lucía is friendly, concise, and uses informal Spanish throughout, though “Gracias por aclararlo, Lucas” and “Gracias por contarme, Lucas” repeat the candidate’s name and feel slightly formulaic."
+    },
+    "forbidden_topics": {
+      "score": 5,
+      "reason": "Lucía stays on-topic and makes no prohibited promises or inquiries; “Una persona del equipo de selección revisará tu perfil y te responderá en un plazo de 24 horas” only describes follow-up."
+    }
+  }
+}
