@@ -208,6 +208,21 @@ def test_page_to_confirm_tab_shows_the_decision_buttons(client):
     assert "no_license" in response.text and "Override" in response.text
 
 
+def test_page_tells_abuse_apart_from_a_knock_out(client):
+    id_ = candidate_id(client)
+    client.post(f"/api/screenings/{HANDLE}/messages", json={"text": "yes"})
+    candidate = client.repo.get(id_)  # set directly: the FakeLLM never reads abuse
+    candidate.state.abuse_count = 2
+    candidate.status = Status.REJECTION_PROPOSED
+    client.repo.save(candidate)
+
+    queue = client.get("/dashboard", params={"status": "rejection_proposed"}).text
+    detail = client.get(f"/dashboard/candidates/{id_}").text
+
+    assert "Abuse" in queue and "Knock-out" not in queue
+    assert "not a knock-out" in detail and "Override" in detail
+
+
 def test_page_override_redirects_back(client):
     id_ = proposed_rejection_id(client)
     response = client.post(

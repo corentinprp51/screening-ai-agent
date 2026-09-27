@@ -179,7 +179,8 @@ class ScreeningService:
         if isinstance(action, Close) and action.status and candidate.status != action.status:
             candidate.status = action.status
             if action.status == Status.REJECTION_PROPOSED:
-                answer = candidate.state.field(action.field).raw_answer
+                # Abuse has no field: its answer is the message that proposed it.
+                answer = candidate.state.field(action.field).raw_answer if action.field else text
                 self._record(candidate, "rejection_proposed", rule=action.reason, answer=answer)
             else:
                 self._record(candidate, "outcome", status=action.status)
@@ -193,7 +194,10 @@ class ScreeningService:
     def _cues(self, candidate: Candidate, extraction: Extraction, resuming: bool) -> frozenset[Cue]:
         """How the reply is phrased. Frustration replaces the welcome back and the forwarded
         question: they all open the reply (the question is still forwarded). A candidate who
-        already asked for a call is not offered it again."""
+        already asked for a call is not offered it again. An abusive message only gets the
+        refocus: no welcome back, no call offer."""
+        if extraction.intent == "abuse":
+            return frozenset({"refocus"})
         if extraction.sentiment == "frustrated" and "wants_human" not in candidate.state.flags:
             return frozenset({"frustrated"})
         cues: set[Cue] = set()
@@ -316,6 +320,11 @@ class ScreeningService:
         """Validate what was extracted for the pending action and update the state.
         Events are collected in `events`, written only once the turn succeeds."""
         state = candidate.state
+        if extraction.intent == "abuse":
+            # Not read as an answer: it only counts towards the abuse limit (ADR 0003).
+            state.abuse_count += 1
+            events.append(self._event(candidate, "abuse"))
+            return
         if extraction.intent == "opt_out" and not isinstance(pending, Greet):
             state.opted_out = True
             events.append(self._event(candidate, "opted_out"))

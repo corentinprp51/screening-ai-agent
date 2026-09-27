@@ -5,6 +5,9 @@ from dataclasses import dataclass
 from app.domain.fields import KNOCK_OUTS, MAX_ATTEMPTS
 from app.domain.models import CandidateState, ClientConfig, Status
 
+# The abusive messages that stop the screening: the first ones get a refocus (ADR 0003).
+ABUSE_LIMIT = 2
+
 
 @dataclass(frozen=True)
 class Greet:
@@ -47,8 +50,9 @@ class AskCorrection:
 @dataclass(frozen=True)
 class Close:
     """For a proposed rejection, `reason` is the failed rule, `field` the field that failed
-    it and `within_hours` the delay in which a recruiter replies. For a confirmed rejection,
-    `offer_contact` asks the message to offer contact if a nearby location opens."""
+    it (None for `abuse`, which is behaviour, not a knock-out) and `within_hours` the delay in
+    which a recruiter replies. For a confirmed rejection, `offer_contact` asks the message to
+    offer contact if a nearby location opens."""
 
     status: Status | None
     reason: str | None = None
@@ -61,17 +65,24 @@ Action = Greet | Ask | FollowUp | Confirm | Recap | AskCorrection | Close
 
 
 def next_action(state: CandidateState, config: ClientConfig) -> Action:
-    """Consent → knock-outs → pending confirmations → fields in config order
+    """Consent → abuse → knock-outs → pending confirmations → fields in config order
     (needs-review fields are skipped) → recap → close. An opt-out after consent closes
-    as Withdrawn from any stage. A knock-out a recruiter overrode is ignored from then on.
+    as Withdrawn from any stage. Repeated abuse proposes a rejection, or before consent
+    declines it. A knock-out a recruiter overrode is ignored from then on.
     A recap answered neither yes nor with a correction asks what to change; the last
     attempt leaves it unconfirmed."""
+    abusive = state.abuse_count >= ABUSE_LIMIT
     if state.consent is None:
-        return Greet()
+        # Repeated abuse before consent is a declined consent: nothing may be kept.
+        return Close(status=None, reason="consent_declined") if abusive else Greet()
     if state.consent is False:
         return Close(status=None, reason="consent_declined")
     if state.opted_out:
         return Close(status=Status.WITHDRAWN)
+    if abusive:
+        return Close(
+            status=Status.REJECTION_PROPOSED, reason="abuse", within_hours=config.review_delay_hours
+        )
     for field_config in config.fields:
         field = state.field(field_config.type)
         if not (field_config.knock_out and field.status == "valid"):

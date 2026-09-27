@@ -282,3 +282,41 @@ def test_a_no_on_a_field_without_the_knock_out_flag_does_not_propose_a_rejection
 )
 def test_stage_of(action, stage):
     assert stage_of(action) == stage
+
+
+@pytest.mark.parametrize(
+    ("state", "expected"),
+    [
+        (CandidateState(abuse_count=1), Greet()),
+        (CandidateState(abuse_count=2), Close(status=None, reason="consent_declined")),
+        (CandidateState(consent=True, abuse_count=1), Ask("name", attempt=0)),
+        (
+            CandidateState(consent=True, abuse_count=2),
+            Close(status=Status.REJECTION_PROPOSED, reason="abuse", within_hours=24),
+        ),
+        (
+            CandidateState(
+                consent=True,
+                abuse_count=2,
+                fields={"name": VALID_NAME, "schedule": VALID_SCHEDULE},
+                recap_confirmed=True,
+            ),
+            Close(status=Status.REJECTION_PROPOSED, reason="abuse", within_hours=24),
+        ),
+        (
+            CandidateState(consent=True, opted_out=True, abuse_count=2),
+            Close(status=Status.WITHDRAWN),
+        ),
+    ],
+)
+def test_a_second_abuse_proposes_a_rejection_or_declines_the_consent(state, expected):
+    assert next_action(state, CONFIG) == expected
+
+
+def test_abuse_is_proposed_before_a_failed_knock_out_and_has_no_field():
+    state = CandidateState(consent=True, abuse_count=2, fields={"license": NO_LICENSE})
+
+    action = next_action(state, KNOCK_OUT_CONFIG)
+
+    assert action == Close(status=Status.REJECTION_PROPOSED, reason="abuse", within_hours=24)
+    assert action.field is None
