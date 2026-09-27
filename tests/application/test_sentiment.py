@@ -129,3 +129,12 @@ def test_a_closing_message_gets_no_sentiment_cue():
 
     assert reply_cues(screening)[-1] == frozenset()
     assert screening.candidate().status == Status.WITHDRAWN
+
+
+def test_a_frustrated_call_request_is_confirmed_not_offered_again():
+    screening = consented()
+    screening.llm.queue(Extraction(sentiment="frustrated", call_requested=True))
+
+    reply = screening.service.handle_message("34600111222", "qué pesado, que me llaméis")
+
+    assert reply == "[fake] ask:name (attempt 0) +call_requested"

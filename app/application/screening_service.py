@@ -349,7 +349,7 @@ class ScreeningService:
             state.add_flag("question_for_recruiter")
             question = extraction.question or text
             events.append(self._event(candidate, "question_forwarded", question=question))
-        call_accepted = self._apply_sentiment(candidate, extraction, events)
+        call_recorded = self._apply_sentiment(candidate, extraction, events)
         match pending:
             case Greet():
                 if extraction.yes_no is not None:
@@ -370,7 +370,7 @@ class ScreeningService:
                     pending,
                     text,
                     events,
-                    uses_attempt=not (changed_others or asking or call_accepted),
+                    uses_attempt=not (changed_others or asking or call_recorded),
                 )
             case Confirm(field=confirmed):
                 # A new value instead of a yes is validated like any other answer.
@@ -403,13 +403,13 @@ class ScreeningService:
         or not, asks the recruiter for one and the screening goes on; True when it is recorded
         now. The extract prompt reads a bare yes as a call request only after the offer."""
         state = candidate.state
-        call_accepted = extraction.call_requested is True and "wants_human" not in state.flags
-        if call_accepted:
+        call_recorded = extraction.call_requested is True and "wants_human" not in state.flags
+        if call_recorded:
             state.add_flag("wants_human")
             events.append(self._event(candidate, "call_requested"))
         if extraction.sentiment == "frustrated":
             state.add_flag("frustrated")
-        return call_accepted
+        return call_recorded
 
     def _apply_fields(
         self,
