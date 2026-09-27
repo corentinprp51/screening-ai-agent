@@ -25,7 +25,7 @@
       <span class="w-7 text-right font-medium">{{ row.score }}</span>
       <div class="h-1.5 w-20 rounded-full bg-slate-200">
         {# Red at 0, amber around 50, green at 100; grey while the score is still partial. #}
-        <div class="h-1.5 rounded-full" style="width: {{ row.score }}%; background: {{ '#94a3b8' if row.status.value == 'in_progress' else 'hsl(%d, 75%%, 45%%)' % (row.score * 1.2) }}"></div>
+        <div class="h-1.5 rounded-full" style="width: {{ row.score }}%; background: {{ '#94a3b8' if row.partial_score else 'hsl(%d, 75%%, 45%%)' % (row.score * 1.2) }}"></div>
       </div>
     </div>
   </td>

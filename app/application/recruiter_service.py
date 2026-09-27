@@ -15,10 +15,9 @@ from app.application.ports import (
 )
 from app.application.screening_service import UnknownCandidate, write_summary
 from app.domain.fields import KNOCK_OUTS, format_value
-from app.domain.flow import Action, Close, next_action, stage_of
+from app.domain.flow import Action, Close, StageDot, next_action, stage_dots, stage_of
 from app.domain.models import (
     Candidate,
-    CandidateState,
     ClientConfig,
     Event,
     FieldStatus,
@@ -41,16 +40,6 @@ class LLMUnavailable(RuntimeError):
     """The message for a recruiter action could not be written; nothing was changed."""
 
 
-# A stage dot in the queue: answered, the current step, the failed knock-out, not reached
-# because the screening stopped (Withdrawn, Abandoned), or not reached yet.
-DotState = Literal["done", "current", "failed", "stopped", "todo"]
-
-
-class StageDot(BaseModel):
-    stage: str
-    state: DotState
-
-
 class QueueRow(BaseModel):
     id: int
     handle: str
@@ -59,6 +48,7 @@ class QueueRow(BaseModel):
     status: Status
     stage: str
     score: int
+    partial_score: bool  # still being answered: the score will change
     flags: list[str]
     last_activity: datetime
     rule: str | None = None  # the failed knock-out or `abuse`, in Rejection proposed
@@ -163,11 +153,12 @@ class RecruiterService:
                 status=candidate.status,
                 stage=candidate.state.stage,
                 score=candidate.score.total,
+                partial_score=candidate.status == Status.IN_PROGRESS,
                 flags=candidate.state.all_flags(),
                 last_activity=candidate.updated_at,
                 **self._proposal_reason(candidate),
                 **self._handoff(candidate),
-                dots=stage_dots(candidate, self._config),
+                dots=stage_dots(candidate.status, candidate.state, self._config),
             )
             for candidate in self._repo.list_candidates(self._config.client_id, status)
         ]
@@ -479,46 +470,6 @@ class RecruiterService:
 
     def _record_llm_call(self, candidate: Candidate, call: str, usage: LLMUsage) -> None:
         self._record(candidate, "llm_call", call=call, **usage.model_dump())
-
-
-def stage_dots(candidate: Candidate, config: ClientConfig) -> list[StageDot]:
-    """One dot per stage: consent, each config field in order, recap, closed. Done up to
-    where the screening is; there, the current step, the failed knock-out, or grey from
-    there on when it stopped. Qualified: every dot done."""
-    state = candidate.state
-    stages = ["consent", *(field.type for field in config.fields), "recap", "closed"]
-    if candidate.status in (Status.QUALIFIED, Status.QUALIFIED_TO_REVIEW):
-        return [StageDot(stage=stage, state="done") for stage in stages]
-    if candidate.status in (Status.REJECTION_PROPOSED, Status.REJECTED):
-        proposal = next_action(state, config)
-        # Abuse has no field: the stage it stopped at is marked instead.
-        field = proposal.field if isinstance(proposal, Close) else None
-        at, here, after = stages.index(field or _stopped_at(state, stages)), "failed", "todo"
-    elif candidate.status in (Status.WITHDRAWN, Status.ABANDONED):
-        at, here, after = stages.index(_stopped_at(state, stages)), "stopped", "stopped"
-    else:
-        at, here, after = stages.index(state.stage), "current", "todo"
-    return [
-        StageDot(stage=stage, state="done" if i < at else here if i == at else after)
-        for i, stage in enumerate(stages)
-    ]
-
-
-def _stopped_at(state: CandidateState, stages: list[str]) -> str:
-    """The stage a stopped screening was at: its stage, or once closed the first stage
-    not done."""
-    if state.stage != "closed":
-        return state.stage
-    for stage in stages:
-        if stage == "consent":
-            done = bool(state.consent)
-        elif stage == "recap":
-            done = state.recap_confirmed
-        else:
-            done = state.field(stage).status in ("valid", "needs_review")
-        if not done:
-            return stage
-    return "closed"
 
 
 def _ratio(part: float, whole: float) -> float | None:
