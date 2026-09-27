@@ -311,6 +311,7 @@ class Candidate(BaseModel):
 
 
 class Message(BaseModel):
+    id: int | None = None  # set once stored; the chat polls for messages after the last one
     role: Literal["candidate", "agent"]
     content: str
     language: Language

@@ -63,32 +63,46 @@ def chat_page(request: Request, handle: str, service: Screening):
     return templates.TemplateResponse(
         request,
         "chat.html",
-        {"candidate": candidate, "messages": service.transcript(handle)},
+        {
+            "candidate": candidate,
+            "persona": service.persona,
+            "messages": service.transcript(handle),
+        },
     )
 
 
 @router.post("/chat/{handle}/messages")
-def chat_message(request: Request, handle: str, service: Screening, text: Annotated[str, Form()]):
-    """HTMX: returns the candidate's bubble and the agent's reply bubble."""
+def chat_message(
+    request: Request,
+    handle: str,
+    service: Screening,
+    text: Annotated[str, Form()],
+    after: Annotated[int, Form()],
+):
+    """HTMX: returns the agent bubbles after the client's cursor: the reply, plus any
+    message stored since the last poll. The candidate's bubble was added on Send."""
     try:
         reply = service.handle_message(handle, text)
     except UnknownCandidate:
         return HTMLResponse(status_code=404)
-    return templates.TemplateResponse(
-        request,
-        "partials/bubbles.html",
-        {"messages": [{"role": "candidate", "content": text}, {"role": "agent", "content": reply}]},
-    )
+    if service.candidate(handle) is None:
+        # Consent declined: the candidate is erased with its messages, the reply is only shown.
+        messages = [{"role": "agent", "content": reply}]
+    else:
+        messages = [m for m in service.transcript(handle, after) if m.role == "agent"]
+    return templates.TemplateResponse(request, "partials/bubbles.html", {"messages": messages})
 
 
 @router.get("/chat/{handle}/messages")
-def chat_messages(request: Request, handle: str, service: Screening):
-    """HTMX polling: the whole transcript, so messages sent by a recruiter action appear."""
+def chat_messages(request: Request, handle: str, service: Screening, after: int = 0):
+    """HTMX polling: the messages after the last one on screen, so messages sent by a
+    recruiter action appear."""
     if service.candidate(handle) is None:
         return HTMLResponse(status_code=204)  # consent declined: keep what is on screen
-    return templates.TemplateResponse(
-        request, "partials/bubbles.html", {"messages": service.transcript(handle)}
-    )
+    messages = service.transcript(handle, after)
+    if not messages:
+        return HTMLResponse(status_code=204)  # nothing new: no swap, no scroll
+    return templates.TemplateResponse(request, "partials/bubbles.html", {"messages": messages})
 
 
 @router.get("/dashboard")

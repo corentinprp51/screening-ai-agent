@@ -1,6 +1,11 @@
 {% for message in messages %}
-<div class="flex {{ 'justify-end' if message.role == 'candidate' else 'justify-start' }}">
-  <p class="max-w-[80%] rounded-2xl px-3 py-2 whitespace-pre-line
-            {{ 'bg-emerald-600 text-white' if message.role == 'candidate' else 'bg-slate-100' }}">{{ message.content }}</p>
+<div class="row {{ message.role }} pop" data-role="{{ message.role }}"{% if message.id %} data-id="{{ message.id }}"{% endif %}>
+  <div class="bubble">
+    <span class="whitespace-pre-line">{{ message.content }}</span>
+    <span class="meta">
+      <time{% if message.created_at %} datetime="{{ message.created_at.isoformat() }}">{{ message.created_at.strftime("%H:%M") }}{% else %}>{% endif %}</time>
+      {% if message.role == "candidate" %}<span class="ticks read">✓✓</span>{% endif %}
+    </span>
+  </div>
 </div>
 {% endfor %}
