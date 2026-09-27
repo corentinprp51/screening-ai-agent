@@ -1,11 +1,17 @@
 import json
+from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy import Engine
 from sqlalchemy.pool import StaticPool
-from sqlmodel import Session, SQLModel, col, create_engine, delete, select
+from sqlmodel import Session, SQLModel, col, create_engine, delete, func, select
 
-from app.adapters.persistence.tables import CandidateRow, EventRow, MessageRow
+from app.adapters.persistence.tables import (
+    CandidateRow,
+    ConsentDropOffRow,
+    EventRow,
+    MessageRow,
+)
 from app.domain.models import (
     Candidate,
     CandidateState,
@@ -131,6 +137,19 @@ class SqliteCandidateRepository:
                 )
                 for row in rows
             ]
+
+    def add_consent_drop_off(self, client_id: str, at: datetime) -> None:
+        with Session(self._engine) as session:
+            session.add(ConsentDropOffRow(client_id=client_id, created_at=at))
+            session.commit()
+
+    def count_consent_drop_offs(self, client_id: str) -> int:
+        with Session(self._engine) as session:
+            return session.exec(
+                select(func.count())
+                .select_from(ConsentDropOffRow)
+                .where(ConsentDropOffRow.client_id == client_id)
+            ).one()
 
 
 def _to_candidate(row: CandidateRow) -> Candidate:

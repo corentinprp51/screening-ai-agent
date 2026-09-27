@@ -5,12 +5,12 @@ from datetime import UTC, datetime
 import pytest
 from fastapi.testclient import TestClient
 
-from app.adapters.clock import FixedClock
+from app.adapters.clock import FixedClock, OffsetClock
 from app.adapters.config.yaml_loader import load_client_config
 from app.adapters.llm.fake_llm import FakeLLM
 from app.adapters.persistence.sqlite_repo import SqliteCandidateRepository, create_sqlite_engine
-from app.api.deps import get_recruiter_service, get_screening_service
-from app.api.main import app
+from app.api.deps import get_dev_clock, get_recruiter_service, get_screening_service
+from app.api.main import app, create_app
 from app.application.recruiter_service import RecruiterService
 from app.application.screening_service import ScreeningService
 
@@ -168,3 +168,35 @@ def test_page_override_redirects_back(client):
     )
     assert response.status_code == 303
     assert response.headers["location"] == "/dashboard?status=rejection_proposed"
+
+
+def _dev_client(dev_routes: bool) -> TestClient:
+    clock = OffsetClock()
+    screening = ScreeningService(
+        config=load_client_config("grupo_sazon"),
+        llm=FakeLLM(),
+        repo=SqliteCandidateRepository(create_sqlite_engine("sqlite://")),
+        clock=clock,
+    )
+    dev_app = create_app(with_dev_routes=dev_routes)
+    dev_app.dependency_overrides[get_screening_service] = lambda: screening
+    dev_app.dependency_overrides[get_dev_clock] = lambda: clock
+    return TestClient(dev_app)
+
+
+def test_api_dev_tick_moves_the_clock_and_nudges():
+    client = _dev_client(dev_routes=True)
+    client.post("/api/applications", json={"phone": HANDLE})
+    client.post(f"/api/screenings/{HANDLE}/messages", json={"text": "yes"})
+
+    response = client.post("/api/dev/tick", json={"hours": 1})
+
+    assert response.status_code == 200
+    messages = client.get(f"/api/screenings/{HANDLE}/transcript").json()["messages"]
+    assert messages[-1]["content"].startswith("¿Seguimos?")
+
+
+def test_api_dev_tick_does_not_exist_without_dev_routes():
+    client = _dev_client(dev_routes=False)
+
+    assert client.post("/api/dev/tick", json={"hours": 1}).status_code == 404

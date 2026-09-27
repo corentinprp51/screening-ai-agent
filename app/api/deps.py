@@ -7,12 +7,12 @@ from typing import Annotated
 
 from fastapi import Depends
 
-from app.adapters.clock import SystemClock
+from app.adapters.clock import OffsetClock, SystemClock
 from app.adapters.config.yaml_loader import load_client_config
 from app.adapters.llm.fake_llm import FakeLLM
 from app.adapters.llm.pydantic_ai_llm import PydanticAILLM, openai_model
 from app.adapters.persistence.sqlite_repo import SqliteCandidateRepository, create_sqlite_engine
-from app.application.ports import LLMPort
+from app.application.ports import Clock, LLMPort
 from app.application.recruiter_service import RecruiterService
 from app.application.screening_service import ScreeningService
 from app.domain.models import ClientConfig
@@ -52,22 +52,38 @@ def get_llm() -> LLMPort:
     return make_llm(os.environ, get_config())
 
 
+def dev_routes_enabled() -> bool:
+    return os.environ.get("DEV_ROUTES", "").lower() in {"1", "true"}
+
+
+@lru_cache
+def get_dev_clock() -> OffsetClock:
+    return OffsetClock()
+
+
+@lru_cache
+def get_clock() -> Clock:
+    """With the dev routes, the clock the dev route moves forward."""
+    return get_dev_clock() if dev_routes_enabled() else SystemClock()
+
+
 @lru_cache
 def get_screening_service() -> ScreeningService:
     return ScreeningService(
         config=get_config(),
         llm=get_llm(),
         repo=get_repository(),
-        clock=SystemClock(),
+        clock=get_clock(),
     )
 
 
 @lru_cache
 def get_recruiter_service() -> RecruiterService:
     return RecruiterService(
-        config=get_config(), llm=get_llm(), repo=get_repository(), clock=SystemClock()
+        config=get_config(), llm=get_llm(), repo=get_repository(), clock=get_clock()
     )
 
 
 Screening = Annotated[ScreeningService, Depends(get_screening_service)]
 Recruiter = Annotated[RecruiterService, Depends(get_recruiter_service)]
+DevClock = Annotated[OffsetClock, Depends(get_dev_clock)]

@@ -42,3 +42,13 @@ class EventRow(SQLModel, table=True):
     stage: str
     payload_json: str
     created_at: datetime
+
+
+class ConsentDropOffRow(SQLModel, table=True):
+    """A greeting left unanswered until the deadline: counted, with nothing about the person."""
+
+    __tablename__ = "consent_drop_offs"
+
+    id: int | None = Field(default=None, primary_key=True)
+    client_id: str = Field(index=True)
+    created_at: datetime
