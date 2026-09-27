@@ -24,6 +24,7 @@ from pydantic_ai.models import Model
 from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
 from pydantic_ai.providers.openai import OpenAIProvider
 
+from app.application.ports import LLMResult, LLMUsage
 from app.domain.fields import format_value
 from app.domain.flow import Action, Close, Recap
 from app.domain.models import CandidateState, ClientConfig, Extraction, Language, Message
@@ -80,7 +81,7 @@ class PydanticAILLM:
         state: CandidateState,
         today: date,
         last_agent_message: str | None,
-    ) -> Extraction:
+    ) -> LLMResult[Extraction]:
         # The message is data: capped, and without angle brackets it cannot write a tag that
         # closes the delimiters wrapping it, whatever its spelling.
         message = message.replace("<", "").replace(">", "")
@@ -103,7 +104,7 @@ class PydanticAILLM:
         state: CandidateState,
         language: Language,
         transcript: list[Message],
-    ) -> str:
+    ) -> LLMResult[str]:
         prompt = _prompts.get_template("reply.md").render(
             persona=self._config.persona,
             max_sentences=MAX_REPLY_SENTENCES,
@@ -117,7 +118,7 @@ class PydanticAILLM:
         )
         return self._run("reply", self._replier, prompt, WRITE_TEMPERATURE, deps=action)
 
-    def summarize(self, facts: dict[str, JsonValue], language: Language) -> str:
+    def summarize(self, facts: dict[str, JsonValue], language: Language) -> LLMResult[str]:
         prompt = _prompts.get_template("summarize.md").render(
             facts=facts,
             language=LANGUAGE_NAMES[language],
@@ -127,7 +128,7 @@ class PydanticAILLM:
 
     def _run[D, T](
         self, call: str, agent: Agent[D, T], prompt: str, temperature: float, deps: D | None = None
-    ) -> T:
+    ) -> LLMResult[T]:
         result = agent.run_sync(
             prompt,
             deps=deps,
@@ -140,7 +141,10 @@ class PydanticAILLM:
             ),
         )
         logger.info("llm %s usage: %s", call, result.usage)
-        return result.output
+        usage = LLMUsage(
+            input_tokens=result.usage.input_tokens, output_tokens=result.usage.output_tokens
+        )
+        return LLMResult(result.output, usage)
 
 
 def _check_summary(summary: str) -> str:

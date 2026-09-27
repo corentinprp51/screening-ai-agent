@@ -37,6 +37,11 @@ def make_service(script: list[Extraction] | None = None, llm: FakeLLM | None = N
     return service, repo
 
 
+def screening_events(repo, candidate_id):
+    """The events of the screening itself, without the LLM usage."""
+    return [e for e in repo.list_events(candidate_id) if e.type != "llm_call"]
+
+
 def test_applying_creates_the_candidate_and_sends_the_greeting():
     service, _ = make_service()
 
@@ -77,7 +82,7 @@ def test_happy_path_asks_every_field_in_order_and_ends_qualified():
     assert candidate.city == "Madrid"
     assert candidate.state.stage == "closed"
     assert len(service.transcript(HANDLE)) == 21
-    assert [e.type for e in repo.list_events(candidate.id)] == [
+    assert [e.type for e in screening_events(repo, candidate.id)] == [
         "application_received",
         "consent_given",
         *["field_captured"] * 8,
@@ -322,7 +327,7 @@ def test_opting_out_after_consent_closes_as_withdrawn():
     candidate = service.candidate(HANDLE)
     assert candidate.status == Status.WITHDRAWN
     assert candidate.state.stage == "closed"
-    events = repo.list_events(candidate.id)
+    events = screening_events(repo, candidate.id)
     assert [(e.type, e.stage) for e in events[-2:]] == [
         ("opted_out", "license"),
         ("outcome", "closed"),
@@ -389,7 +394,7 @@ def test_a_reply_failure_records_nothing_from_the_turn():
 
     candidate = service.candidate(HANDLE)
     assert "name" not in candidate.state.fields
-    assert [e.type for e in repo.list_events(candidate.id)] == [
+    assert [e.type for e in screening_events(repo, candidate.id)] == [
         "application_received",
         "consent_given",
         "llm_failure",
@@ -785,7 +790,7 @@ def test_a_city_outside_the_service_areas_proposes_a_rejection():
 
     candidate = service.candidate(HANDLE)
     assert (candidate.status, candidate.city) == (Status.REJECTION_PROPOSED, "Bilbao")
-    assert repo.list_events(candidate.id)[-1].payload == {
+    assert screening_events(repo, candidate.id)[-1].payload == {
         "rule": "outside_service_area",
         "answer": "Bilbao",
     }
@@ -938,3 +943,41 @@ def test_reply_gets_the_recent_transcript_with_the_current_message():
         ("agent", "[fake] ask:own_vehicle (attempt 0)"),
         ("candidate", "yes"),
     ]
+
+
+def llm_calls(repo, candidate_id):
+    return [e.payload for e in repo.list_events(candidate_id) if e.type == "llm_call"]
+
+
+def usage(call: str) -> dict:
+    return {"call": call, "input_tokens": 0, "output_tokens": 0}
+
+
+def test_every_llm_call_of_a_turn_is_recorded_with_its_usage():
+    service, repo = make_service()
+    service.apply(PHONE)
+
+    service.handle_message(HANDLE, "yes")
+
+    assert llm_calls(repo, service.candidate(HANDLE).id) == [usage("extract"), usage("reply")]
+
+
+def test_the_summary_call_is_recorded_with_its_usage():
+    service, repo = make_service()
+    service.apply(PHONE)
+
+    answer(service, *QUALIFY, "yes")
+
+    calls = llm_calls(repo, service.candidate(HANDLE).id)
+    assert calls[-3:] == [usage("extract"), usage("reply"), usage("summarize")]
+
+
+def test_an_extract_is_recorded_even_when_the_reply_fails():
+    llm = FakeLLM()
+    service, repo = make_service(llm=llm)
+    service.apply(PHONE)
+
+    llm.fail_next("reply")
+    service.handle_message(HANDLE, "yes")
+
+    assert llm_calls(repo, service.candidate(HANDLE).id) == [usage("extract")]
