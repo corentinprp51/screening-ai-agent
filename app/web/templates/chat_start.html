@@ -1,17 +1,55 @@
 {% extends "base.html" %}
-{% block title %}Apply{% endblock %}
+{% block title %}{{ persona.agent_name }} · Apply{% endblock %}
+{% block main_class %}max-w-[420px] mx-auto h-dvh flex flex-col shadow-xl{% endblock %}
 {% block content %}
-<h1 class="text-2xl font-semibold mb-4">Delivery driver application</h1>
-<form method="post" action="/chat" class="bg-white rounded-lg shadow p-4 space-y-3">
-  {% if error %}<p class="text-red-600 text-sm">{{ error }}</p>{% endif %}
-  <label class="block">
-    <span class="text-sm text-slate-600">Phone number</span>
-    <input name="phone" required class="mt-1 w-full border rounded px-3 py-2" placeholder="+34 600 111 222">
-  </label>
-  <label class="block">
-    <span class="text-sm text-slate-600">Name (optional)</span>
-    <input name="name" class="mt-1 w-full border rounded px-3 py-2">
-  </label>
-  <button class="bg-emerald-600 text-white rounded px-4 py-2">Apply</button>
-</form>
+<header class="bg-[#008069] text-white flex items-center gap-3 px-3 py-2">
+  <div class="w-10 h-10 rounded-full bg-emerald-100 text-[#008069] flex items-center justify-center font-semibold">
+    {{ persona.agent_name[0] }}
+  </div>
+  <p class="font-medium truncate">{{ persona.client_name }}</p>
+</header>
+
+<div class="wallpaper flex-1 overflow-y-auto px-4 py-8">
+  {# A plain form: the redirect to the chat is a real navigation. The button shows the
+     click was taken until the chat loads, and a double click applies once. #}
+  <form method="post" action="/chat" onsubmit="connecting(this)"
+        class="bg-white rounded-lg shadow-sm p-5 space-y-4">
+    <div class="text-center">
+      <div class="w-16 h-16 mx-auto rounded-full bg-emerald-100 text-[#008069] flex items-center justify-center text-2xl font-semibold">
+        {{ persona.agent_name[0] }}
+      </div>
+      <h1 class="mt-3 text-lg font-medium">Start a chat with {{ persona.agent_name }} · {{ persona.client_name }}</h1>
+      <p class="text-sm text-slate-500">Delivery driver application</p>
+    </div>
+    {% if error %}<p class="text-red-600 text-sm bg-red-50 rounded-md px-3 py-2">{{ error }}</p>{% endif %}
+    <label class="block">
+      <span class="text-sm text-slate-600">Phone number</span>
+      <input name="phone" type="tel" required autofocus
+             class="mt-1 w-full rounded-lg bg-[#f0f2f5] px-3 py-2 outline-none" placeholder="+34 600 111 222">
+    </label>
+    <label class="block">
+      <span class="text-sm text-slate-600">Name (optional)</span>
+      <input name="name" class="mt-1 w-full rounded-lg bg-[#f0f2f5] px-3 py-2 outline-none">
+    </label>
+    <button class="w-full bg-[#008069] text-white rounded-full px-4 py-2 flex items-center justify-center gap-2 disabled:opacity-60">
+      <span class="spinner hidden w-4 h-4 rounded-full border-2 border-white/40 border-t-white motion-safe:animate-spin"></span>
+      <span class="label">Apply</span>
+    </button>
+  </form>
+</div>
+
+<script>
+  // Only the button is disabled: disabled inputs would not be sent.
+  function connecting(form) {
+    const button = form.querySelector("button");
+    button.disabled = true;
+    button.querySelector(".spinner").classList.remove("hidden");
+    button.querySelector(".label").textContent = "Connecting…";
+  }
+
+  // Back from the chat can restore this page from cache, button still disabled.
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) location.reload();
+  });
+</script>
 {% endblock %}

@@ -60,8 +60,17 @@ def test_api_get_transcript(client):
     assert len(response.json()["messages"]) == 1
 
 
-def test_page_chat_start_form(client):
-    assert client.get("/chat").status_code == 200
+def test_page_chat_start_form_names_the_agent_and_client_from_config(client):
+    response = client.get("/chat")
+    assert response.status_code == 200
+    assert "Start a chat with Lucía · Grupo Sazón" in response.text
+
+
+def test_page_apply_shows_the_validation_error(client):
+    response = client.post("/chat", data={"phone": "no digits"})
+    assert response.status_code == 422
+    assert "A phone number needs digits" in response.text
+    assert "Start a chat with Lucía" in response.text
 
 
 def test_page_apply_redirects_to_the_chat(client):
