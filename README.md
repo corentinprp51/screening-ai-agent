@@ -26,7 +26,7 @@ task container:down    # stop it; the database stays in the screening-data volum
 task container:reset   # stop it and delete the volume (after a schema change)
 ```
 
-The same `compose.yaml` runs with `docker compose` (Compose v2.24 or later, for the optional env file). The service reads `.env` when present (without it, the FakeLLM) and sets `DEV_ROUTES=false` unless `.env` enables it.
+The same `docker-compose.yaml` runs with `docker compose` (Compose v2.24 or later, for the optional env file). The service reads `.env` when present (without it, the FakeLLM) and sets `DEV_ROUTES=false` unless `.env` enables it.
 
 ### The real LLM
 
