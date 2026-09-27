@@ -19,7 +19,8 @@ FieldType = Literal[
 ]
 # How the reply is phrased around its action, chosen by code (the action is unchanged).
 # `resuming`: the candidate writes back after a Nudge, a Reopen or Abandoned.
-Cue = Literal["resuming"]
+# `question_forwarded`: the candidate asked a question, passed on to a recruiter.
+Cue = Literal["resuming", "question_forwarded"]
 AvailabilityOption = Literal["full_time", "part_time", "weekends"]
 ScheduleOption = Literal["morning", "afternoon", "evening", "flexible"]
 VehicleType = Literal["car", "moped_motorcycle"]
@@ -340,7 +341,8 @@ class Extraction(BaseModel):
     """Everything the LLM may understand from one candidate message."""
 
     language: Language = "es"
-    intent: Literal["answer", "opt_out"] = "answer"
+    intent: Literal["answer", "opt_out", "question"] = "answer"
+    question: str | None = None  # the candidate's question as said, with the `question` intent
     yes_no: bool | None = None
     name: Extracted[str] | None = None
     license: Extracted[License] | None = None

@@ -151,14 +151,15 @@ class ScreeningService:
             action = next_action(candidate.state, self._config)
             # The candidate message is stored after the LLM calls, but the reply follows it.
             recent = [*messages, self._message(candidate, "candidate", text)][-RECENT_MESSAGES:]
-            # A closing message is not a welcome back.
-            cues: frozenset[Cue] = (
-                frozenset({"resuming"})
-                if resuming and not isinstance(action, Close)
-                else frozenset()
-            )
+            cues: set[Cue] = set()
+            # A closing message is not a welcome back, nor does it go back to a question.
+            if not isinstance(action, Close):
+                if resuming:
+                    cues.add("resuming")
+                if extraction.intent == "question":
+                    cues.add("question_forwarded")
             reply, usage = self._llm.reply(
-                action, candidate.state, candidate.state.language, recent, cues
+                action, candidate.state, candidate.state.language, recent, frozenset(cues)
             )
             self._record_llm_call(candidate, "reply", usage)
         except Exception as error:
@@ -305,6 +306,13 @@ class ScreeningService:
             state.opted_out = True
             events.append(self._event(candidate, "opted_out"))
             return
+        # A question is forwarded to a recruiter; a message that is only a question uses no
+        # attempt, while any answer given with it is still applied.
+        asking = extraction.intent == "question"
+        if asking:
+            state.add_flag("question_for_recruiter")
+            question = extraction.question or text
+            events.append(self._event(candidate, "question_forwarded", question=question))
         match pending:
             case Greet():
                 if extraction.yes_no is not None:
@@ -318,14 +326,20 @@ class ScreeningService:
                 )
                 # A message only about other fields (e.g. a correction) uses no attempt.
                 self._apply_field(
-                    candidate, asked, extraction, pending, text, events, not changed_others
+                    candidate,
+                    asked,
+                    extraction,
+                    pending,
+                    text,
+                    events,
+                    uses_attempt=not (changed_others or asking),
                 )
             case Confirm(field=confirmed):
                 # A new value instead of a yes is validated like any other answer.
                 new_value = (
                     extraction.yes_no is not True and getattr(extraction, confirmed) is not None
                 )
-                if not new_value:
+                if not new_value and not (asking and extraction.yes_no is None):
                     self._apply_confirmation(
                         candidate, confirmed, extraction.yes_no is True, events
                     )
@@ -341,7 +355,7 @@ class ScreeningService:
                     state.recap_attempts = 0  # a correction: a new recap follows
                 elif extraction.yes_no is True:
                     state.recap_confirmed = True
-                else:
+                elif not asking:
                     state.recap_attempts += 1
 
     def _apply_fields(
