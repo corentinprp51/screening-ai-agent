@@ -345,6 +345,7 @@ def test_the_extraction_reads_the_sentiment_and_the_answer_to_the_call_offer():
         ("resuming", "coming back after a silence"),
         ("confused", "did not understand your last message"),
         ("frustrated", "talk to a person from the team"),
+        ("call_requested", "a recruiter will call them"),
     ],
 )
 def test_each_cue_instruction_reaches_the_reply_prompt(cue, instruction):
@@ -355,6 +356,16 @@ def test_each_cue_instruction_reaches_the_reply_prompt(cue, instruction):
 
     assert instruction in model.prompt(0)
     assert instruction not in model.prompt(1)
+
+
+def test_without_the_call_requested_cue_the_reply_may_not_claim_a_call_was_noted():
+    model = ScriptedModel("ok", "ok")
+
+    adapter(model).reply(ASK, CandidateState(), "es", [], frozenset())
+    adapter(model).reply(ASK, CandidateState(), "es", [], frozenset({"call_requested"}))
+
+    assert "Never say a call" in model.prompt(0)
+    assert "Never say a call" not in model.prompt(1)
 
 
 @pytest.mark.parametrize(

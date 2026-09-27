@@ -22,7 +22,10 @@ FieldType = Literal[
 # `question_forwarded`: the candidate asked a question, passed on to a recruiter.
 # `confused` / `frustrated`: the sentiment of the candidate's message; `frustrated` offers a call.
 # `refocus`: the candidate's message was abusive; the reply brings them back to the step.
-Cue = Literal["resuming", "question_forwarded", "confused", "frustrated", "refocus"]
+# `call_requested`: code recorded the candidate's call request this turn; the reply confirms it.
+Cue = Literal[
+    "resuming", "question_forwarded", "confused", "frustrated", "refocus", "call_requested"
+]
 Sentiment = Literal["neutral", "confused", "frustrated"]
 AvailabilityOption = Literal["full_time", "part_time", "weekends"]
 ScheduleOption = Literal["morning", "afternoon", "evening", "flexible"]
@@ -349,7 +352,7 @@ class Extraction(BaseModel):
     intent: Literal["answer", "opt_out", "question", "abuse"] = "answer"
     question: str | None = None  # the candidate's question as said, with the `question` intent
     sentiment: Sentiment = "neutral"
-    call_requested: bool | None = None  # the answer to the offer to talk to a person
+    call_requested: bool | None = None  # asks for a person or a call, or answers the offer
     yes_no: bool | None = None
     name: Extracted[str] | None = None
     license: Extracted[License] | None = None

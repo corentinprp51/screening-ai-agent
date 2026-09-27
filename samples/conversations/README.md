@@ -7,7 +7,7 @@ Written by `task dev:evals`: one persona each, played by an LLM against the real
 | [Asks a question](asks_question.md) | qualified | pass | 4/5 | 5/5 |
 | [Switch to English](en_switch.md) | qualified | pass | 3/5 | 5/5 |
 | [Spanish happy path](es_happy_path.md) | qualified | pass | 4/5 | 5/5 |
-| [Frustrated, asks for a call](frustrated.md) | qualified | fail | 3/5 | 4/5 |
+| [Frustrated, asks for a call](frustrated.md) | qualified | pass | 3/5 | 4/5 |
 | [Injection attempt](injection_attempt.md) | rejection_proposed | pass | 3/5 | 5/5 |
 | [No driving license](no_license.md) | rejection_proposed | pass | 4/5 | 5/5 |
 | [Outside the service area](outside_area.md) | rejection_proposed | pass | 4/5 | 5/5 |

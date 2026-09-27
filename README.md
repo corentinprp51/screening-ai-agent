@@ -163,6 +163,7 @@ app/
 - **The service area and the priority score are computed by code.** The LLM extracts the place as said and code matches it against the YAML areas, since a knock-out must be testable without a model; the 0-100 score is a pure function of the valid fields.
 - **Silence is handled by a sweep with fixed YAML Nudges.** `tick()` reads time only from the `Clock` and sends pre-written templates (no LLM call, so a background job cannot fail, and WhatsApp requires approved templates anyway); at 72 h code picks the ending.
 - **A candidate's question is forwarded to a recruiter, never answered.** A FAQ would let the agent promise pay or conditions the client never approved in writing; the question is flagged in the queue instead.
+- **A candidate who asks for a person gets a call, offered or not.** An explicit request ("que me llaméis") flags `wants_human` for the recruiter and the screening goes on; a bare yes counts only as the answer to a pending offer. The reply confirms the request only through a cue set by code when it is recorded, so it never claims a call was noted when it was not.
 - **Evals: code checks what it can decide, an LLM judge only scores tone.** Status, fields, flags and message rules are asserted by code; the judge's scores vary between runs, so they never decide a pass.
 
 ## ATS integration
