@@ -186,7 +186,9 @@ def test_reply_writes_the_text_following_the_transcript():
     ]
 
     reply = (
-        adapter(model).reply(Ask("license", attempt=0), CandidateState(), "es", transcript).output
+        adapter(model)
+        .reply(Ask("license", attempt=0), CandidateState(), "es", transcript, frozenset())
+        .output
     )
 
     assert reply == "Genial, Ana. ¿Tienes carnet de conducir en vigor?"
@@ -225,7 +227,7 @@ def test_the_reply_prompt_describes_every_action(action, expected):
         }
     )
 
-    adapter(model).reply(action, state, "es", [])
+    adapter(model).reply(action, state, "es", [], frozenset())
 
     assert expected in model.prompt()
 
@@ -240,6 +242,18 @@ def retry_reason(model: ScriptedModel) -> str:
     return retry.model_response()
 
 
+def test_the_resuming_cue_opens_the_reply_with_where_the_screening_stands():
+    model = ScriptedModel("ok", "ok")
+    state = CandidateState(fields={"name": FieldState(status="valid", value="Ana López")})
+
+    adapter(model).reply(ASK, state, "es", [], frozenset({"resuming"}))
+    adapter(model).reply(ASK, state, "es", [], frozenset())
+
+    assert "coming back after a silence" in model.prompt(0)
+    assert "8 questions left" in model.prompt(0)
+    assert "coming back after a silence" not in model.prompt(1)
+
+
 @pytest.mark.parametrize(
     ("bad_reply", "reason"),
     [
@@ -252,7 +266,7 @@ def retry_reason(model: ScriptedModel) -> str:
 def test_a_reply_breaking_a_message_rule_is_retried_once_with_the_reason(bad_reply, reason):
     model = ScriptedModel(bad_reply, GOOD_REPLY)
 
-    reply = adapter(model).reply(ASK, CandidateState(), "es", []).output
+    reply = adapter(model).reply(ASK, CandidateState(), "es", [], frozenset()).output
 
     assert reply == GOOD_REPLY
     assert len(model.requests) == 2
@@ -283,7 +297,11 @@ def test_a_long_recap_listing_every_field_passes():
     recap += "\n¿Está todo correcto?"
     model = ScriptedModel(recap)
 
-    reply = adapter(model).reply(Recap(fields=("name",)), CandidateState(), "es", []).output
+    reply = (
+        adapter(model)
+        .reply(Recap(fields=("name",)), CandidateState(), "es", [], frozenset())
+        .output
+    )
 
     assert reply == recap
     assert len(model.requests) == 1
@@ -293,7 +311,11 @@ def test_an_emoji_in_a_closing_message_passes():
     closing = "¡Listo, Ana! Un reclutador te llamará en las próximas 48 h 🙌"
     model = ScriptedModel(closing)
 
-    reply = adapter(model).reply(Close(status=Status.QUALIFIED), CandidateState(), "es", []).output
+    reply = (
+        adapter(model)
+        .reply(Close(status=Status.QUALIFIED), CandidateState(), "es", [], frozenset())
+        .output
+    )
 
     assert reply == closing
     assert len(model.requests) == 1
@@ -371,7 +393,7 @@ def test_token_usage_is_logged_per_call(caplog):
 
     with caplog.at_level(logging.INFO, logger="app.adapters.llm.pydantic_ai_llm"):
         extract(llm)
-        llm.reply(Ask("name", attempt=0), CandidateState(), "es", [])
+        llm.reply(Ask("name", attempt=0), CandidateState(), "es", [], frozenset())
 
     assert [record.getMessage().split(":")[0] for record in caplog.records] == [
         "llm extract usage",
@@ -388,7 +410,7 @@ def test_each_call_returns_the_token_usage_of_its_run():
 
     results = [
         llm.extract("sí", Greet(), CandidateState(), date(2026, 9, 26), None),
-        llm.reply(Ask("name", attempt=0), CandidateState(), "es", []),
+        llm.reply(Ask("name", attempt=0), CandidateState(), "es", [], frozenset()),
         llm.summarize({"status": "qualified"}, "es"),
     ]
 

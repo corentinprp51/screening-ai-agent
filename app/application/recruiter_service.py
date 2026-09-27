@@ -235,7 +235,7 @@ class RecruiterService:
         recent = self._repo.list_messages(candidate.id)[-RECENT_MESSAGES:]
         try:
             reply, usage = self._llm.reply(
-                action, candidate.state, candidate.state.language, recent
+                action, candidate.state, candidate.state.language, recent, frozenset()
             )
         except Exception as error:
             stored = self._get(candidate.id)  # drop the in-memory changes

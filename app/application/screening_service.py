@@ -40,6 +40,7 @@ from app.domain.flow import (
 from app.domain.models import (
     Candidate,
     ClientConfig,
+    Cue,
     Event,
     Extraction,
     FieldState,
@@ -122,7 +123,12 @@ class ScreeningService:
         """Run one turn and return the agent's reply. Never raises, except for an
         unknown candidate."""
         candidate = self._get(handle)
-        if candidate.status != Status.IN_PROGRESS:
+        events: list[Event] = []
+        if candidate.status == Status.ABANDONED:
+            # Resume at the stage it stopped at: kept only if the turn succeeds.
+            candidate.status = Status.IN_PROGRESS
+            events.append(self._event(candidate, "resumed"))
+        elif candidate.status != Status.IN_PROGRESS:
             return self._after_close(candidate, text)
 
         # Both LLM calls happen before any write except their `llm_call` events, so a failure
@@ -132,7 +138,7 @@ class ScreeningService:
         last_agent_message = next(
             (m.content for m in reversed(messages) if m.role == "agent"), None
         )
-        events: list[Event] = []
+        cues = self._cues(candidate, messages, events)
         try:
             extraction, usage = self._llm.extract(
                 text, pending, candidate.state, self._clock.now().date(), last_agent_message
@@ -144,7 +150,7 @@ class ScreeningService:
             # The candidate message is stored after the LLM calls, but the reply follows it.
             recent = [*messages, self._message(candidate, "candidate", text)][-RECENT_MESSAGES:]
             reply, usage = self._llm.reply(
-                action, candidate.state, candidate.state.language, recent
+                action, candidate.state, candidate.state.language, recent, cues
             )
             self._record_llm_call(candidate, "reply", usage)
         except Exception as error:
@@ -175,6 +181,14 @@ class ScreeningService:
         self._repo.save(candidate)
         self._send(candidate, reply)
         return reply
+
+    def _cues(
+        self, candidate: Candidate, messages: list[Message], events: list[Event]
+    ) -> frozenset[Cue]:
+        """`resuming` after a Nudge since the candidate's last message, or on a resume."""
+        silent = silence(messages, self._repo.list_events(candidate.id))
+        resumed = any(event.type == "resumed" for event in events)
+        return frozenset({"resuming"}) if resumed or (silent and silent.last_nudge) else frozenset()
 
     def tick(self) -> None:
         """The sweep, run on a schedule: recompute the priority score of every open
