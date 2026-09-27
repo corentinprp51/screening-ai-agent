@@ -6,7 +6,7 @@
 <div class="flex items-baseline justify-between mb-4">
   <h1 class="text-2xl font-semibold">Candidates</h1>
   <div class="flex gap-2">
-    {% if dev_routes %}
+    {% if request.app.state.dev_routes %}
     <button hx-post="/api/dev/reset" hx-swap="none"
             hx-confirm="Delete every candidate, message and event?"
             hx-on::after-request="if (event.detail.successful) location.reload()"

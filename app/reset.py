@@ -1,10 +1,10 @@
 """Delete every candidate, message, event and consent drop-off: `task dev:reset`."""
 
-from app.api.deps import get_recruiter_service
+from app.api.deps import get_repository
 
 
 def main() -> None:
-    get_recruiter_service().reset()
+    get_repository().reset()  # the repository alone: a reset never needs the LLM config
     print("Reset: no candidates left.")
 
 

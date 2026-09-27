@@ -25,7 +25,7 @@ def create_app(with_dev_routes: bool) -> FastAPI:
     app.include_router(pages.router)
     if with_dev_routes:
         app.include_router(dev_routes.router)
-    pages.templates.env.globals["dev_routes"] = with_dev_routes
+    app.state.dev_routes = with_dev_routes
     return app
 
 
