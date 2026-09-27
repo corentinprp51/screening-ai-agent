@@ -7,12 +7,12 @@
   "failures": [],
   "judge": {
     "tone": {
-      "score": 5,
-      "reason": "Lucía is warm, direct, and concise in Spanish, using informal “tú” and briefly acknowledging the answer with “Gracias por contármelo, Carlos.”"
+      "score": 4,
+      "reason": "Lucía is friendly, concise, and uses informal Spanish, as in «Gracias por contármelo, Carlos», though she doesn’t adapt beyond a brief acknowledgment."
     },
     "forbidden_topics": {
       "score": 5,
-      "reason": "Lucía stays on topic and makes no prohibited promises or inquiries; she says “Un reclutador revisará tu perfil y te responderá en un plazo de 24 horas.”"
+      "reason": "She avoids prohibited topics and promises, and «Un reclutador revisará tu perfil» appropriately passes the decision to a recruiter."
     }
   }
 }

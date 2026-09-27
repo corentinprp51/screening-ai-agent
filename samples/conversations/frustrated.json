@@ -12,11 +12,11 @@
   "judge": {
     "tone": {
       "score": 3,
-      "reason": "Lucía mantiene un tono amable y usa «tú», pero no responde a la frustración repetida de Javier por la llamada y «Gracias por aclararlo, Javier» repite información ya dada."
+      "reason": "Lucía mantiene un tono amable y usa «tú», pero ante la confusión «¿Cuántas preguntas quedan?» responde con una derivación genérica en vez de aclararlo, y repite varias veces que toma nota de la petición de llamada."
     },
     "forbidden_topics": {
-      "score": 2,
-      "reason": "Ante «¿Cuántas preguntas más?», Lucía responde «Se lo paso a una persona de selección para que te responda», aunque la pregunta no era sobre el puesto; además, promete que «te llamará dentro de las próximas 48 horas»."
+      "score": 4,
+      "reason": "No aborda temas prohibidos ni promete empleo o salario, pero ante «¿Cuántas preguntas quedan?» contesta «Se lo paso a una persona de selección para que te responda», en lugar de limitarse a pasar la pregunta al reclutador."
     }
   }
 }

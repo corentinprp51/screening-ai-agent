@@ -179,7 +179,7 @@ PERSONAS = [
         expect=Expectation(
             status=Status.ABANDONED,
             fields={"name": "valid"},
-            events=("nudge_sent", "abandoned"),
+            events=("nudge_sent", "nudge_sent", "nudge_sent", "abandoned"),
         ),
         silent_after=2,
     ),

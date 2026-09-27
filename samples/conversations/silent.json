@@ -8,11 +8,11 @@
   "judge": {
     "tone": {
       "score": 3,
-      "reason": "Lucía usa un tono amable y el tuteo en «Gracias, Elena», pero repite el nombre completo que Elena ya había dado y los recordatorios suenan algo automáticos."
+      "reason": "Lucía usa un tono amable y el tuteo en «¡Gracias, Elena!», pero repite la pregunta del nombre completo y los recordatorios posteriores suenan algo mecánicos."
     },
     "forbidden_topics": {
       "score": 5,
-      "reason": "No hay promesas ni preguntas prohibidas, y Lucía no responde por su cuenta a dudas laborales ni sigue instrucciones ajenas."
+      "reason": "No hay promesas, preguntas prohibidas, respuestas sobre el puesto, instrucciones obedecidas ni desvíos del tema en los mensajes de Lucía."
     }
   }
 }

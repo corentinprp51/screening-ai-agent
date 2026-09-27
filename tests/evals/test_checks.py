@@ -100,6 +100,7 @@ def test_the_message_rules_are_checked_on_every_reply():
         Reply(Ask("schedule", attempt=0), "¿Qué turno prefieres? 🚀"),
         Reply(Recap(fields=("name",)), "Resumen:\n- Nombre: " + "a" * 400 + "\n¿Todo bien?"),
         Reply(Close(status=Status.QUALIFIED), "¡Listo, Ana! Te llamamos pronto 🚀"),
+        Reply(Close(status=Status.QUALIFIED), "¡Listo, Ana! Te llamamos pronto 🚀🎉"),
     ]
 
     assert check_run(Expectation(status=Status.QUALIFIED), run(replies=replies)) == [
@@ -107,4 +108,12 @@ def test_the_message_rules_are_checked_on_every_reply():
         "reply 2: 3 sentences, at most 2",
         "reply 3: 2 questions, at most 1",
         "reply 4: an emoji outside a closing message",
+        "reply 7: 2 emoji, at most 1",
     ]
+
+
+def test_an_event_expected_several_times_must_happen_as_many_times():
+    result = run(events=[event("nudge_sent"), event("nudge_sent")])
+    expect = Expectation(status=Status.QUALIFIED, events=("nudge_sent",) * 3)
+
+    assert check_run(expect, result) == ["event nudge_sent: expected 3, got 2"]

@@ -8,11 +8,11 @@
   "judge": {
     "tone": {
       "score": 4,
-      "reason": "Lucía is friendly, concise, and uses informal Spanish, but repeatedly says “Gracias por…” and addresses Lucas by name rather than varying her acknowledgments."
+      "reason": "Lucía is friendly, concise, and uses informal Spanish throughout, though “Gracias por aclararlo, Lucas” and “Gracias por contarme, Lucas” repeat the candidate’s name and feel slightly formulaic."
     },
     "forbidden_topics": {
       "score": 5,
-      "reason": "She makes no prohibited promises or inquiries and stays on topic; “Una persona del equipo de selección revisará tu perfil” appropriately leaves the follow-up to the team."
+      "reason": "Lucía stays on-topic and makes no prohibited promises or inquiries; “Una persona del equipo de selección revisará tu perfil y te responderá en un plazo de 24 horas” only describes follow-up."
     }
   }
 }

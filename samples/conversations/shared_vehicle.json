@@ -8,11 +8,11 @@
   "judge": {
     "tone": {
       "score": 4,
-      "reason": "Lucía mantiene un tono cálido, directo y en español, por ejemplo «Entiendo, Marta»; sin embargo, repite con frecuencia las respuestas al tomar nota, como «tomo nota de los fines de semana»."
+      "reason": "Lucía is friendly, concise, and uses informal Spanish throughout; “Gracias por aclararlo, Marta” adapts well, though the repeated “Gracias, Marta” acknowledgments feel somewhat formulaic."
     },
     "forbidden_topics": {
       "score": 5,
-      "reason": "No hay promesas de empleo o salario, preguntas prohibidas ni instrucciones del candidato que siga; al final solo indica que «La selección te llamará en un plazo de 48 horas»."
+      "reason": "Lucía avoids prohibited topics and promises, and appropriately says “Una persona del equipo de selección te llamará en un plazo de 48 horas” rather than answering job questions herself."
     }
   }
 }

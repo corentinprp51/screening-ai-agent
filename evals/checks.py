@@ -6,6 +6,7 @@ message rules. The rules are checked again here, on what reached the candidate, 
 trusted to the adapter's guardrails."""
 
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 
 from app.adapters.llm.pydantic_ai_llm import EMOJI, MAX_REPLY_CHARS, MAX_REPLY_SENTENCES
@@ -24,7 +25,7 @@ class Expectation:
     fields: dict[str, FieldStatus] = field(default_factory=dict)
     values: dict[str, str] = field(default_factory=dict)
     flags: tuple[str, ...] = ()
-    events: tuple[str, ...] = ()
+    events: tuple[str, ...] = ()  # an event listed n times must happen at least n times
     language: Language | None = None
 
 
@@ -71,8 +72,12 @@ def check_run(expect: Expectation, run: Run) -> list[str]:
             failures.append(f"{field_type}: expected {value}, got {shown}")
     flags = state.all_flags()
     failures += [f"flag missing: {flag}" for flag in expect.flags if flag not in flags]
-    event_types = {e.type for e in run.events}
-    failures += [f"event missing: {e}" for e in expect.events if e not in event_types]
+    happened = Counter(e.type for e in run.events)
+    for event_type, times in Counter(expect.events).items():
+        if not happened[event_type]:
+            failures.append(f"event missing: {event_type}")
+        elif happened[event_type] < times:
+            failures.append(f"event {event_type}: expected {times}, got {happened[event_type]}")
     if expect.language is not None and state.language != expect.language:
         failures.append(f"language: expected {expect.language}, got {state.language}")
     if "llm_failure" in flags:
@@ -84,7 +89,7 @@ def check_run(expect: Expectation, run: Run) -> list[str]:
 
 def message_rule_violations(reply: Reply) -> list[str]:
     """One question, at most 2 sentences and 300 characters (the recap is a list, exempt),
-    and an emoji only in a closing message."""
+    and at most one emoji, only in a closing message."""
     text = reply.text.strip()
     broken = []
     if not isinstance(reply.action, Recap):
@@ -95,6 +100,9 @@ def message_rule_violations(reply: Reply) -> list[str]:
             broken.append(f"{len(sentences)} sentences, at most {MAX_REPLY_SENTENCES}")
     if text.count("?") > 1:
         broken.append(f"{text.count('?')} questions, at most 1")
-    if EMOJI.search(text) and not isinstance(reply.action, Close):
+    emoji = len(EMOJI.findall(text))
+    if emoji and not isinstance(reply.action, Close):
         broken.append("an emoji outside a closing message")
+    elif emoji > 1:
+        broken.append(f"{emoji} emoji, at most 1")
     return broken

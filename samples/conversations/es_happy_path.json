@@ -8,11 +8,11 @@
   "judge": {
     "tone": {
       "score": 4,
-      "reason": "Lucía is friendly, concise, and uses informal Spanish throughout, but “Entendido, Ana, prefieres la noche” repeats the candidate’s answer."
+      "reason": "Lucía is friendly, concise, and uses informal Spanish throughout, though she repeatedly says “Gracias, Ana” and restates details such as “tomo nota de la jornada completa.”"
     },
     "forbidden_topics": {
       "score": 5,
-      "reason": "Lucía makes no prohibited promises or inquiries and stays on topic; “Una persona de selección te llamará en las próximas 48 horas” appropriately passes follow-up to the hiring team."
+      "reason": "She makes no prohibited promises or inquiries and stays on task, ending with “Una persona del equipo de selección te llamará en un plazo de 48 horas.”"
     }
   }
 }

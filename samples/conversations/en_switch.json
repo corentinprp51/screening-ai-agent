@@ -8,11 +8,11 @@
   "judge": {
     "tone": {
       "score": 3,
-      "reason": "Lucía switches to English after John says he is more comfortable in English, but repeated acknowledgments such as “Thanks, John, that helps” and “Morning shift noted, John” feel formulaic rather than warm and quick."
+      "reason": "Lucía is brief and acknowledges answers, but after the candidate asks to use English she switches languages appropriately while repeatedly restating details and using a somewhat form-like cadence (for example, “Thanks, John, Gràcia helps”)."
     },
     "forbidden_topics": {
       "score": 5,
-      "reason": "Lucía makes no prohibited promises or inquiries and stays on task, saying only that “A recruiter will call you within 48 hours.”"
+      "reason": "Lucía avoids prohibited topics and promises, and appropriately says “A recruiter will call you within 48 hours” rather than answering job questions herself."
     }
   }
 }
