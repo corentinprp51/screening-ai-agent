@@ -54,3 +54,8 @@ tasks:
     desc: Stop the container; the database stays in its volume
     cmds:
       - podman compose down
+
+  container:reset:
+    desc: Stop the container and delete its database volume (after a schema change)
+    cmds:
+      - podman compose down --volumes
