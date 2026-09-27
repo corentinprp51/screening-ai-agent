@@ -1,0 +1,17 @@
+{# The status as a colored pill. Needs `status`. #}
+{% set pill_classes = {
+  "in_progress": "bg-blue-100 text-blue-800 border-blue-200",
+  "rejection_proposed": "bg-amber-100 text-amber-800 border-amber-200",
+  "qualified": "bg-green-100 text-green-800 border-green-200",
+  "qualified_to_review": "bg-teal-100 text-teal-800 border-teal-200",
+  "rejected": "bg-red-100 text-red-800 border-red-200",
+  "withdrawn": "bg-slate-100 text-slate-600 border-slate-200",
+  "abandoned": "bg-slate-50 text-slate-500 border-slate-400 border-dashed",
+} %}
+<span class="inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-medium {{ pill_classes[status.value] }}">
+  {%- if status.value == "qualified_to_review" -%}
+  {{ status_labels["qualified"] }}<span class="rounded bg-teal-600 px-1 text-[10px] uppercase leading-4 text-white">review</span>
+  {%- else -%}
+  {{ status_labels[status] }}
+  {%- endif -%}
+</span>

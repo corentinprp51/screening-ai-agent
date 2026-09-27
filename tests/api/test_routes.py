@@ -145,6 +145,21 @@ def test_page_dashboard(client):
     assert HANDLE in response.text
 
 
+def test_page_dashboard_rows_refreshes_the_table_body_for_the_status_tab(client):
+    client.post("/api/applications", json={"phone": HANDLE})
+    response = client.get("/dashboard/rows", params={"status": "in_progress"})
+    assert response.status_code == 200
+    assert HANDLE in response.text
+    assert "<table" not in response.text
+    assert HANDLE not in client.get("/dashboard/rows", params={"status": "qualified"}).text
+
+
+def test_page_dashboard_polls_its_rows_for_the_current_tab(client):
+    response = client.get("/dashboard", params={"status": "qualified"})
+    assert 'hx-get="/dashboard/rows?status=qualified"' in response.text
+    assert 'hx-trigger="every 5s"' in response.text
+
+
 def test_api_impact(client):
     client.post("/api/applications", json={"phone": HANDLE})
     response = client.get("/api/impact")

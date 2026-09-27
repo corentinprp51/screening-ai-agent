@@ -472,3 +472,153 @@ def test_reopening_an_unknown_candidate_fails(services):
 
     with pytest.raises(UnknownCandidate):
         recruiter.reopen(999)
+
+
+STAGES = [
+    "consent",
+    "name",
+    "license",
+    "own_vehicle",
+    "service_area",
+    "availability",
+    "schedule",
+    "experience",
+    "start_date",
+    "recap",
+    "closed",
+]
+
+
+def dots(recruiter: RecruiterService) -> list[tuple[str, str]]:
+    [row] = recruiter.queue()
+    return [(dot.stage, dot.state) for dot in row.dots]
+
+
+def test_the_stage_dots_follow_the_client_fields(services):
+    screening, recruiter, _ = services
+    screening.apply("600000001")
+    for text in ["yes", "Ana López"]:
+        screening.handle_message("600000001", text)
+
+    assert dots(recruiter) == [
+        ("consent", "done"),
+        ("name", "done"),
+        ("license", "current"),
+        *[(stage, "todo") for stage in STAGES[3:]],
+    ]
+
+
+def test_a_qualified_candidate_has_every_dot_done(services):
+    screening, recruiter, _ = services
+    qualify(screening, "600000001", "Ana López")
+
+    assert dots(recruiter) == [(stage, "done") for stage in STAGES]
+
+
+def test_a_knock_out_marks_the_failing_field(services):
+    screening, recruiter, _ = services
+    candidate_id = propose_rejection(screening, "600000001")
+    expected = [
+        ("consent", "done"),
+        ("name", "done"),
+        ("license", "failed"),
+        *[(stage, "todo") for stage in STAGES[3:]],
+    ]
+    assert dots(recruiter) == expected
+
+    recruiter.confirm_rejection(candidate_id)
+
+    assert dots(recruiter) == expected
+
+
+def test_an_abandoned_screening_greys_out_the_remaining_dots(services):
+    screening, recruiter, clock = services
+    abandon(screening, clock, "600000001")
+
+    assert dots(recruiter) == [
+        ("consent", "done"),
+        ("name", "done"),
+        *[(stage, "stopped") for stage in STAGES[2:]],
+    ]
+
+
+def test_a_withdrawn_screening_greys_out_the_dots_from_where_it_stopped(services, llm):
+    screening, recruiter, _ = services
+    screening.apply("600000001")
+    for text in ["yes", "Ana López", "yes"]:
+        screening.handle_message("600000001", text)
+    llm.queue(Extraction(intent="opt_out"))
+    screening.handle_message("600000001", "stop")
+
+    assert dots(recruiter) == [
+        ("consent", "done"),
+        ("name", "done"),
+        ("license", "done"),
+        *[(stage, "stopped") for stage in STAGES[3:]],
+    ]
+
+
+def test_an_abuse_rejection_marks_the_close_not_a_field(services, llm):
+    screening, recruiter, _ = services
+    screening.apply("600000001")
+    screening.handle_message("600000001", "yes")
+    llm.queue(Extraction(intent="abuse"), Extraction(intent="abuse"))
+    screening.handle_message("600000001", "eres un bot inútil")
+    screening.handle_message("600000001", "eres un bot inútil")
+
+    assert dots(recruiter) == [
+        ("consent", "done"),
+        *[(stage, "todo") for stage in STAGES[1:-1]],
+        ("closed", "failed"),
+    ]
+
+
+def test_a_knock_out_volunteered_early_leaves_the_skipped_fields_empty(services, llm):
+    screening, recruiter, _ = services
+    screening.apply("600000001")
+    screening.handle_message("600000001", "yes")
+    llm.queue(
+        Extraction(
+            name=Extracted(value="Ana López", raw_answer="Ana López", confidence=1.0),
+            own_vehicle=Extracted(
+                value=OwnVehicle(owns_vehicle=False), raw_answer="no car", confidence=1.0
+            ),
+        )
+    )
+    screening.handle_message("600000001", "Ana López, no car")
+
+    assert dots(recruiter) == [
+        ("consent", "done"),
+        ("name", "done"),
+        ("license", "todo"),
+        ("own_vehicle", "failed"),
+        *[(stage, "todo") for stage in STAGES[4:]],
+    ]
+
+
+def test_qualified_to_review_leaves_an_unconfirmed_recap_empty(services):
+    screening, recruiter, clock = services
+    screening.apply("600000001")
+    for text in ["yes", "Ana López", "yes", "yes", "Madrid", "full_time", "evening", "2"]:
+        screening.handle_message("600000001", text)
+    screening.handle_message("600000001", "immediate")
+    clock.set(START + timedelta(hours=72))
+    screening.tick()
+
+    assert recruiter.queue()[0].status == Status.QUALIFIED_TO_REVIEW
+    assert dots(recruiter) == [
+        *[(stage, "done") for stage in STAGES[:-2]],
+        ("recap", "todo"),
+        ("closed", "done"),
+    ]
+
+
+def test_the_score_is_partial_while_in_progress(services):
+    screening, recruiter, _ = services
+    qualify(screening, "600000001", "Ana López")
+    screening.apply("600000002")
+
+    assert {row.handle: row.partial_score for row in recruiter.queue()} == {
+        "600000001": False,
+        "600000002": True,
+    }

@@ -1,0 +1,47 @@
+{# The queue's table body, refreshed by polling. Needs `rows` and `current`. #}
+{% set to_confirm = current == "rejection_proposed" %}
+{% set dot_classes = {
+  "done": "bg-green-500",
+  "current": "bg-blue-500 ring-2 ring-blue-200",
+  "failed": "bg-red-500",
+  "stopped": "bg-slate-200",
+  "todo": "border border-slate-300 bg-white",
+} %}
+{% for row in rows %}
+<tr class="border-b last:border-0 hover:bg-slate-50">
+  <td class="p-3">
+    <a href="/dashboard/candidates/{{ row.id }}" class="underline">{{ row.name or row.handle }}</a>
+    {% if row.summary %}<p class="mt-1 max-w-xs text-xs text-slate-500 whitespace-pre-line">{{ row.summary }}</p>{% endif %}
+  </td>
+  <td class="p-3">{{ row.city or "—" }}</td>
+  <td class="p-3">{% with status = row.status %}{% include "partials/status_pill.html" %}{% endwith %}</td>
+  <td class="p-3">
+    <div class="flex items-center gap-1">
+      {% for dot in row.dots %}<span title="{{ dot.stage }}" class="inline-block h-2.5 w-2.5 rounded-full {{ dot_classes[dot.state] }}"></span>{% endfor %}
+    </div>
+  </td>
+  <td class="p-3">
+    <div class="flex items-center gap-2">
+      <span class="w-7 text-right font-medium">{{ row.score }}</span>
+      <div class="h-1.5 w-20 rounded-full bg-slate-200">
+        {# Red at 0, amber around 50, green at 100; grey while the score is still partial. #}
+        <div class="h-1.5 rounded-full" style="width: {{ row.score }}%; background: {{ '#94a3b8' if row.partial_score else 'hsl(%d, 75%%, 45%%)' % (row.score * 1.2) }}"></div>
+      </div>
+    </div>
+  </td>
+  <td class="p-3">{{ row.next_action or "—" }}</td>
+  <td class="p-3">
+    {% for flag in row.flags %}<span class="inline-block rounded bg-amber-100 text-amber-800 px-2 py-0.5 mr-1">{{ flag }}</span>{% endfor %}
+  </td>
+  <td class="p-3 text-slate-500">{{ row.last_activity.strftime("%Y-%m-%d %H:%M") }}</td>
+  {% if to_confirm %}
+  <td class="p-3 font-medium">{% if row.rule == "abuse" %}Abuse{% else %}Knock-out: {{ row.rule }}{% endif %}</td>
+  <td class="p-3 text-slate-600">{{ row.answer or "—" }}</td>
+  <td class="p-3">
+    {% with candidate_id = row.id, back = "/dashboard?status=rejection_proposed" %}{% include "partials/decision.html" %}{% endwith %}
+  </td>
+  {% endif %}
+</tr>
+{% else %}
+<tr><td colspan="{{ 11 if to_confirm else 8 }}" class="p-6 text-center text-slate-500">No candidates.</td></tr>
+{% endfor %}

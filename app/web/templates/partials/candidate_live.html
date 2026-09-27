@@ -4,7 +4,7 @@
 <div class="flex flex-wrap items-baseline gap-3 mb-4">
   <h1 class="text-2xl font-semibold" data-live="name">{{ candidate.name or candidate.handle }}</h1>
   <span class="text-slate-500">{{ candidate.handle }}</span>
-  <span class="rounded-full bg-slate-900 text-white px-3 py-0.5 text-sm" data-live="status">{{ status_labels[candidate.status] }}</span>
+  <span class="rounded-full" data-live="status">{% with status = candidate.status %}{% include "partials/status_pill.html" %}{% endwith %}</span>
   <span class="text-sm text-slate-500" data-live="stage">stage: {{ candidate.stage }}</span>
 </div>
 

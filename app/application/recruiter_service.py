@@ -15,7 +15,7 @@ from app.application.ports import (
 )
 from app.application.screening_service import UnknownCandidate, write_summary
 from app.domain.fields import KNOCK_OUTS, format_value
-from app.domain.flow import Action, Close, next_action, stage_of
+from app.domain.flow import Action, Close, StageDot, next_action, stage_dots, stage_of
 from app.domain.models import (
     Candidate,
     ClientConfig,
@@ -48,12 +48,14 @@ class QueueRow(BaseModel):
     status: Status
     stage: str
     score: int
+    partial_score: bool  # still being answered: the score will change
     flags: list[str]
     last_activity: datetime
     rule: str | None = None  # the failed knock-out or `abuse`, in Rejection proposed
     answer: str | None = None  # the candidate's answer to it, or the abusive message
     summary: str | None = None
     next_action: str | None = None
+    dots: list[StageDot] = []
 
 
 class FieldView(BaseModel):
@@ -151,10 +153,12 @@ class RecruiterService:
                 status=candidate.status,
                 stage=candidate.state.stage,
                 score=candidate.score.total,
+                partial_score=candidate.status == Status.IN_PROGRESS,
                 flags=candidate.state.all_flags(),
                 last_activity=candidate.updated_at,
                 **self._proposal_reason(candidate),
                 **self._handoff(candidate),
+                dots=stage_dots(candidate.status, candidate.state, self._config),
             )
             for candidate in self._repo.list_candidates(self._config.client_id, status)
         ]
