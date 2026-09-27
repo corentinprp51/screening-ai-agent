@@ -13,9 +13,9 @@ tasks:
       - uv sync
 
   dev:run:
-    desc: Run the web app with auto-reload (chat at http://localhost:8000/chat, dashboard at /dashboard)
+    desc: Run the web app with auto-reload (chat at http://localhost:8000/chat, dashboard at /dashboard; uvicorn args after --, e.g. task dev:run -- --port 8001)
     cmds:
-      - uv run uvicorn app.api.main:app --reload
+      - uv run uvicorn app.api.main:app --reload {{.CLI_ARGS}}
     dotenv: [.env]
 
   dev:cli:
