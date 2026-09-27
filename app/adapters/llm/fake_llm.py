@@ -7,10 +7,13 @@
 - Every call returns a zero usage: no tokens are spent.
 - reply / summarize: visible `[fake] …` placeholders; the recap lists every field and the
   summary names the status and the next action.
+- latency_seconds: each reply waits that long, to demo the chat's typing indicator
+  without the real LLM (`FAKE_LLM_LATENCY_MS`).
 - fail_next(call): the next call to that method raises, to exercise the failure path.
 - calls(call): the arguments of each call to that method, for tests to inspect.
 """
 
+import time
 from datetime import date
 from typing import Literal
 
@@ -25,8 +28,9 @@ LLMCall = Literal["extract", "reply", "summarize"]
 
 
 class FakeLLM:
-    def __init__(self, script: list[Extraction] | None = None) -> None:
+    def __init__(self, script: list[Extraction] | None = None, latency_seconds: float = 0) -> None:
         self._script = list(script or [])
+        self.latency_seconds = latency_seconds
         self._fail: LLMCall | None = None
         self._log: list[tuple[LLMCall, dict[str, object]]] = []
 
@@ -88,6 +92,7 @@ class FakeLLM:
         transcript: list[Message],
         cues: frozenset[Cue],
     ) -> LLMResult[str]:
+        time.sleep(self.latency_seconds)
         self._log.append(
             (
                 "reply",

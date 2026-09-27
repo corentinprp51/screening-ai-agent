@@ -1,20 +1,138 @@
 {% extends "base.html" %}
-{% block title %}Chat{% endblock %}
+{% block title %}{{ persona.agent_name }} · Chat{% endblock %}
+{% block main_class %}max-w-[420px] mx-auto h-dvh flex flex-col shadow-xl{% endblock %}
+{% block head %}
+<style>
+  .wallpaper {
+    background-color: #efeae2;
+    background-image: radial-gradient(rgb(0 0 0 / 0.06) 1px, transparent 1px),
+                      radial-gradient(rgb(0 0 0 / 0.04) 1px, transparent 1px);
+    background-size: 22px 22px;
+    background-position: 0 0, 11px 11px;
+  }
+  .row { display: flex; margin-top: 2px; }
+  .row.candidate { justify-content: flex-end; }
+  .row:not(.candidate + .candidate, .agent + .agent) { margin-top: 10px; }
+  .bubble {
+    position: relative; max-width: 80%; padding: 6px 8px 8px 9px; border-radius: 8px;
+    font-size: 14.5px; line-height: 19px; box-shadow: 0 1px 0.5px rgb(0 0 0 / 0.13);
+    overflow-wrap: anywhere;
+  }
+  .agent .bubble { background: #fff; }
+  .candidate .bubble { background: #d9fdd3; }
+  /* The tail on the first bubble of a run, like a phone chat. */
+  .agent:not(.agent + .agent) .bubble { border-top-left-radius: 0; }
+  .candidate:not(.candidate + .candidate) .bubble { border-top-right-radius: 0; }
+  .agent:not(.agent + .agent) .bubble::before,
+  .candidate:not(.candidate + .candidate) .bubble::before {
+    content: ""; position: absolute; top: 0; border-top: 8px solid; width: 0;
+  }
+  .agent:not(.agent + .agent) .bubble::before {
+    left: -8px; border-color: #fff; border-left: 8px solid transparent;
+  }
+  .candidate:not(.candidate + .candidate) .bubble::before {
+    right: -8px; border-color: #d9fdd3; border-right: 8px solid transparent;
+  }
+  .meta { float: right; margin: 6px 0 -6px 10px; font-size: 11px; color: #667781; }
+  .ticks { margin-left: 2px; letter-spacing: -3px; }
+  .ticks.read { color: #53bdeb; }
+</style>
+{% endblock %}
 {% block content %}
-<div class="flex items-baseline justify-between mb-4">
-  <h1 class="text-xl font-semibold">{{ candidate.name or candidate.handle }}</h1>
-  <a href="/chat" class="text-sm text-slate-500 underline">New application</a>
-</div>
-<div id="messages" class="bg-white rounded-lg shadow p-4 space-y-2 min-h-64"
-     hx-get="/chat/{{ candidate.handle }}/messages" hx-trigger="every 3s" hx-swap="innerHTML">
+<header class="bg-[#008069] text-white flex items-center gap-3 px-3 py-2">
+  <div class="w-10 h-10 rounded-full bg-emerald-100 text-[#008069] flex items-center justify-center font-semibold">
+    {{ persona.agent_name[0] }}
+  </div>
+  <div class="flex-1 min-w-0">
+    <p class="font-medium truncate">{{ persona.agent_name }} · {{ persona.client_name }}</p>
+    <p id="status" class="text-xs text-white/80">online</p>
+  </div>
+  <a href="/chat" class="text-xs text-white/80 underline">New application</a>
+</header>
+
+<div id="messages" class="wallpaper flex-1 overflow-y-auto px-4 pb-3"
+     hx-get="/chat/{{ candidate.handle }}/messages" hx-trigger="every 3s"
+     hx-vals="js:{after: lastMessageId()}" hx-swap="beforeend scroll:bottom">
+  <div class="flex justify-center my-3">
+    <span class="bg-white text-xs text-slate-500 rounded-md px-3 py-1 shadow-sm">Today</span>
+  </div>
   {% include "partials/bubbles.html" %}
 </div>
-<form class="mt-3 flex gap-2"
+
+{# hx-sync: sending aborts a poll in flight, and polls wait until the reply is on screen,
+   so a poll never adds the message being sent a second time. #}
+<form id="composer" class="bg-[#f0f2f5] flex gap-2 px-3 py-2"
       hx-post="/chat/{{ candidate.handle }}/messages"
-      hx-target="#messages" hx-swap="beforeend"
-      hx-on::after-request="this.reset()">
+      hx-target="#messages" hx-swap="beforeend scroll:bottom"
+      hx-sync="#messages:replace" hx-disabled-elt="find input, find button"
+      hx-on::before-request="showPending(this)" hx-on::after-request="settle(this, event)">
   <input name="text" required autocomplete="off" autofocus
-         class="flex-1 border rounded px-3 py-2" placeholder="Type your answer">
-  <button class="bg-emerald-600 text-white rounded px-4 py-2">Send</button>
+         class="flex-1 rounded-lg px-3 py-2 outline-none disabled:bg-white/60" placeholder="Type a message">
+  <button class="bg-[#008069] text-white rounded-full px-4 py-2 disabled:opacity-60">Send</button>
 </form>
+
+<template id="pending">
+  <div class="row candidate pop" data-role="candidate" id="optimistic">
+    <div class="bubble">
+      <span class="whitespace-pre-line"></span>
+      <span class="meta"><time></time> <span class="ticks">✓</span></span>
+    </div>
+  </div>
+  <div class="row agent pop" id="typing">
+    <div class="bubble flex gap-1 py-3">
+      <span class="typing-dot w-2 h-2 rounded-full bg-slate-400"></span>
+      <span class="typing-dot w-2 h-2 rounded-full bg-slate-400"></span>
+      <span class="typing-dot w-2 h-2 rounded-full bg-slate-400"></span>
+    </div>
+  </div>
+</template>
+
+<script>
+  const messages = document.getElementById("messages");
+  const status = document.getElementById("status");
+
+  // The poll cursor: the id of the last stored message on screen.
+  function lastMessageId() {
+    const stored = messages.querySelectorAll("[data-id]");
+    return stored.length ? stored[stored.length - 1].dataset.id : 0;
+  }
+
+  // Times are stored in UTC: show them in the candidate's time zone.
+  htmx.onLoad((element) => {
+    element.querySelectorAll("time[datetime]").forEach((time) => {
+      time.textContent = new Date(time.dateTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    });
+  });
+
+  // On Send: the candidate's bubble (✓) and a typing bubble, before the reply arrives.
+  function showPending(form) {
+    const pending = document.getElementById("pending").content.cloneNode(true);
+    pending.querySelector(".whitespace-pre-line").textContent = form.elements.text.value;
+    pending.querySelector("time").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    messages.append(pending);
+    messages.scrollTop = messages.scrollHeight;
+    form.dataset.text = form.elements.text.value;
+    form.elements.text.value = "";
+    status.textContent = "typing…";
+  }
+
+  // The reply replaced the typing bubble (✓✓ blue), or the request failed: the text goes
+  // back into the input and no pending bubble stays.
+  function settle(form, event) {
+    document.getElementById("typing").remove();
+    const optimistic = document.getElementById("optimistic");
+    if (event.detail.successful) {
+      optimistic.removeAttribute("id");
+      optimistic.querySelector(".ticks").textContent = "✓✓";
+      optimistic.querySelector(".ticks").classList.add("read");
+    } else {
+      optimistic.remove();
+      form.elements.text.value = form.dataset.text;
+    }
+    status.textContent = "online";
+    setTimeout(() => form.elements.text.focus());
+  }
+
+  messages.scrollTop = messages.scrollHeight;
+</script>
 {% endblock %}

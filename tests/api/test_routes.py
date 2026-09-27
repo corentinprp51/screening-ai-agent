@@ -74,11 +74,14 @@ def test_page_chat(client):
     assert client.get(f"/chat/{HANDLE}").status_code == 200
 
 
-def test_page_post_message_returns_bubbles(client):
+def test_page_post_message_returns_only_the_agent_bubble(client):
+    """The candidate bubble is already on screen: it was added on Send."""
     client.post("/chat", data={"phone": HANDLE})
     response = client.post(f"/chat/{HANDLE}/messages", data={"text": "yes"})
     assert response.status_code == 200
-    assert "yes" in response.text
+    assert response.text.count("data-id=") == 1
+    assert 'data-role="agent"' in response.text
+    assert 'data-role="candidate"' not in response.text
 
 
 def candidate_id(client) -> int:
@@ -141,6 +144,34 @@ def test_page_chat_messages_polls_the_transcript(client):
     response = client.get(f"/chat/{HANDLE}/messages")
     assert response.status_code == 200
     assert "Lucía" in response.text
+
+
+def test_page_chat_messages_after_a_cursor_returns_only_newer_messages(client):
+    client.post("/chat", data={"phone": HANDLE})
+    client.post(f"/chat/{HANDLE}/messages", data={"text": "yes"})
+    greeting, answer, reply = client.get(f"/api/screenings/{HANDLE}/transcript").json()["messages"]
+
+    response = client.get(f"/chat/{HANDLE}/messages", params={"after": greeting["id"]})
+
+    assert response.status_code == 200
+    assert f'data-id="{greeting["id"]}"' not in response.text
+    assert f'data-id="{answer["id"]}"' in response.text
+    assert f'data-id="{reply["id"]}"' in response.text
+
+
+def test_page_chat_messages_after_the_last_message_is_empty(client):
+    client.post("/chat", data={"phone": HANDLE})
+    [greeting] = client.get(f"/api/screenings/{HANDLE}/transcript").json()["messages"]
+
+    response = client.get(f"/chat/{HANDLE}/messages", params={"after": greeting["id"]})
+
+    assert "data-id=" not in response.text
+
+
+def test_page_chat_shows_the_persona_from_the_client_config(client):
+    client.post("/chat", data={"phone": HANDLE})
+    response = client.get(f"/chat/{HANDLE}")
+    assert "Lucía · Grupo Sazón" in response.text
 
 
 def proposed_rejection_id(client) -> int:

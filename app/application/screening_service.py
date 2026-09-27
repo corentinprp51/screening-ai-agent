@@ -46,6 +46,7 @@ from app.domain.models import (
     FieldState,
     FieldValue,
     Message,
+    Persona,
     Place,
     Status,
     Summary,
@@ -96,6 +97,10 @@ class ScreeningService:
         self._llm = llm
         self._repo = repo
         self._clock = clock
+
+    @property
+    def persona(self) -> Persona:
+        return self._config.persona
 
     def apply(self, phone: str, name: str | None = None) -> Candidate:
         """Create the candidate and send the greeting, or resume an existing screening."""
@@ -248,9 +253,11 @@ class ScreeningService:
     def candidate(self, handle: str) -> Candidate | None:
         return self._repo.get_by_handle(self._config.client_id, handle)
 
-    def transcript(self, handle: str) -> list[Message]:
+    def transcript(self, handle: str, after: int = 0) -> list[Message]:
+        """The messages, or only those stored after message id `after`."""
         candidate = self.candidate(handle)
-        return self._repo.list_messages(candidate.id) if candidate else []
+        messages = self._repo.list_messages(candidate.id) if candidate else []
+        return [m for m in messages if m.id is not None and m.id > after]
 
     def _due_step(self, candidate: Candidate, now: datetime) -> Nudge | Deadline | None:
         messages = self._repo.list_messages(candidate.id)

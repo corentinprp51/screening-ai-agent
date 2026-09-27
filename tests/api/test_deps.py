@@ -22,3 +22,10 @@ def test_an_llm_model_with_a_key_runs_on_the_pydantic_ai_adapter():
 def test_an_llm_model_without_a_key_fails_with_a_clear_error():
     with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
         make_llm({"LLM_MODEL": "openai:gpt-6-luna"}, CONFIG)
+
+
+def test_fake_llm_latency_slows_down_each_reply():
+    llm = make_llm({"FAKE_LLM_LATENCY_MS": "250"}, CONFIG)
+
+    assert isinstance(llm, FakeLLM)
+    assert llm.latency_seconds == 0.25

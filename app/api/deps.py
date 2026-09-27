@@ -33,7 +33,7 @@ def make_llm(environ: Mapping[str, str], config: ClientConfig) -> LLMPort:
     """An empty `LLM_MODEL` runs on the FakeLLM; `openai:<model>` on the real LLM."""
     llm_model = environ.get("LLM_MODEL", "")
     if not llm_model:
-        return FakeLLM()
+        return FakeLLM(latency_seconds=int(environ.get("FAKE_LLM_LATENCY_MS") or 0) / 1000)
     provider, _, model_name = llm_model.partition(":")
     if provider != "openai" or not model_name:
         raise RuntimeError(f"LLM_MODEL must be openai:<model>, got {llm_model!r}")
