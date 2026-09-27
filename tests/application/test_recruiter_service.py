@@ -138,7 +138,7 @@ def test_the_detail_shows_transcript_fields_flags_and_events(services):
     )
     assert name.needs_review is False
     assert detail.flags == []
-    assert [e.type for e in detail.events] == [
+    assert [e.type for e in detail.events if e.type != "llm_call"] == [
         "application_received",
         "consent_given",
         *["field_captured"] * 8,
@@ -354,3 +354,46 @@ def test_overriding_gives_the_recent_transcript_to_the_reply(services, llm):
 
     transcript = llm.calls("reply")[-1]["transcript"]
     assert [(m.role, m.content) for m in transcript] == expected
+
+
+def llm_calls(detail) -> list[str]:
+    return [e.payload["call"] for e in detail.events if e.type == "llm_call"]
+
+
+def test_confirming_records_the_reply_call(services):
+    screening, recruiter, _ = services
+    candidate_id = propose_rejection(screening, "600000001")
+    before = llm_calls(recruiter.detail(candidate_id))
+
+    recruiter.confirm_rejection(candidate_id)
+
+    detail = recruiter.detail(candidate_id)
+    assert llm_calls(detail)[len(before) :] == ["reply"]
+    assert [e.payload for e in detail.events if e.type == "llm_call"][-1] == {
+        "call": "reply",
+        "input_tokens": 0,
+        "output_tokens": 0,
+    }
+
+
+def test_an_override_onto_another_failed_knock_out_records_the_reply_and_the_summary(services, llm):
+    screening, recruiter, _ = services
+    screening.apply("600000001")
+    llm.queue(
+        Extraction(yes_no=True),
+        Extraction(
+            name=Extracted(value="Ana López", raw_answer="Ana López", confidence=1.0),
+            license=Extracted(value=License(has_license=False), raw_answer="no", confidence=1.0),
+            own_vehicle=Extracted(
+                value=OwnVehicle(owns_vehicle=False), raw_answer="no", confidence=1.0
+            ),
+        ),
+    )
+    for text in ["sí", "Ana López, sin carnet ni coche"]:
+        screening.handle_message("600000001", text)
+    candidate_id = screening.candidate("600000001").id
+    before = llm_calls(recruiter.detail(candidate_id))
+
+    recruiter.override_rejection(candidate_id)
+
+    assert llm_calls(recruiter.detail(candidate_id))[len(before) :] == ["reply", "summarize"]

@@ -1,9 +1,9 @@
 """The three ports. Adapters implement them; the services depend only on them."""
 
 from datetime import date, datetime
-from typing import Protocol
+from typing import NamedTuple, Protocol
 
-from pydantic import JsonValue
+from pydantic import BaseModel, JsonValue
 
 from app.domain.flow import Action
 from app.domain.models import (
@@ -20,6 +20,18 @@ from app.domain.models import (
 RECENT_MESSAGES = 6
 
 
+class LLMUsage(BaseModel):
+    """The tokens one LLM call used, retries included."""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
+class LLMResult[T](NamedTuple):
+    output: T
+    usage: LLMUsage
+
+
 class LLMPort(Protocol):
     def extract(
         self,
@@ -28,7 +40,7 @@ class LLMPort(Protocol):
         state: CandidateState,
         today: date,
         last_agent_message: str | None,
-    ) -> Extraction:
+    ) -> LLMResult[Extraction]:
         """Understand a candidate message answering `action`, asked as `last_agent_message`."""
         ...
 
@@ -38,11 +50,11 @@ class LLMPort(Protocol):
         state: CandidateState,
         language: Language,
         transcript: list[Message],
-    ) -> str:
+    ) -> LLMResult[str]:
         """Write the message for an action chosen by code, following the recent `transcript`."""
         ...
 
-    def summarize(self, facts: dict[str, JsonValue], language: Language) -> str:
+    def summarize(self, facts: dict[str, JsonValue], language: Language) -> LLMResult[str]:
         """Phrase a recruiter summary from facts computed by code."""
         ...
 

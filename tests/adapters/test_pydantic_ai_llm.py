@@ -71,7 +71,7 @@ def adapter(model: ScriptedModel) -> PydanticAILLM:
 
 
 def extract(llm: PydanticAILLM, message: str = "sí, claro") -> Extraction:
-    return llm.extract(message, Greet(), CandidateState(), date(2026, 9, 26), "¿Seguimos?")
+    return llm.extract(message, Greet(), CandidateState(), date(2026, 9, 26), "¿Seguimos?").output
 
 
 def test_extract_returns_the_extraction_at_temperature_0():
@@ -185,7 +185,9 @@ def test_reply_writes_the_text_following_the_transcript():
         Message(role="candidate", content="Ana López", language="es", created_at=NOW),
     ]
 
-    reply = adapter(model).reply(Ask("license", attempt=0), CandidateState(), "es", transcript)
+    reply = (
+        adapter(model).reply(Ask("license", attempt=0), CandidateState(), "es", transcript).output
+    )
 
     assert reply == "Genial, Ana. ¿Tienes carnet de conducir en vigor?"
     assert model.settings()["temperature"] == 0.4
@@ -250,7 +252,7 @@ def retry_reason(model: ScriptedModel) -> str:
 def test_a_reply_breaking_a_message_rule_is_retried_once_with_the_reason(bad_reply, reason):
     model = ScriptedModel(bad_reply, GOOD_REPLY)
 
-    reply = adapter(model).reply(ASK, CandidateState(), "es", [])
+    reply = adapter(model).reply(ASK, CandidateState(), "es", []).output
 
     assert reply == GOOD_REPLY
     assert len(model.requests) == 2
@@ -281,7 +283,7 @@ def test_a_long_recap_listing_every_field_passes():
     recap += "\n¿Está todo correcto?"
     model = ScriptedModel(recap)
 
-    reply = adapter(model).reply(Recap(fields=("name",)), CandidateState(), "es", [])
+    reply = adapter(model).reply(Recap(fields=("name",)), CandidateState(), "es", []).output
 
     assert reply == recap
     assert len(model.requests) == 1
@@ -291,7 +293,7 @@ def test_an_emoji_in_a_closing_message_passes():
     closing = "¡Listo, Ana! Un reclutador te llamará en las próximas 48 h 🙌"
     model = ScriptedModel(closing)
 
-    reply = adapter(model).reply(Close(status=Status.QUALIFIED), CandidateState(), "es", [])
+    reply = adapter(model).reply(Close(status=Status.QUALIFIED), CandidateState(), "es", []).output
 
     assert reply == closing
     assert len(model.requests) == 1
@@ -301,7 +303,7 @@ def test_summarize_writes_the_text_from_the_facts():
     model = ScriptedModel("Ana López, qualified: call within 48 h.")
     facts = {"status": "qualified", "fields": {"name": "Ana López"}, "next_action": "Call"}
 
-    summary = adapter(model).summarize(facts, "es")
+    summary = adapter(model).summarize(facts, "es").output
 
     assert summary == "Ana López, qualified: call within 48 h."
     assert model.settings()["temperature"] == 0.4
@@ -321,7 +323,7 @@ FOUR_LINES = "Ana López, 2 años de experiencia.\nTodo válido.\nSin flags.\nLl
 def test_a_summary_too_long_is_retried_once_with_the_reason_fed_back(summary, reason):
     model = ScriptedModel(summary, "Ana López, cualificada.\nNada que revisar.\nLlamar en 48 h.")
 
-    text = adapter(model).summarize({"status": "qualified"}, "es")
+    text = adapter(model).summarize({"status": "qualified"}, "es").output
 
     assert text == "Ana López, cualificada.\nNada que revisar.\nLlamar en 48 h."
     retry_messages, _ = model.requests[1]
@@ -332,7 +334,7 @@ def test_a_summary_too_long_is_retried_once_with_the_reason_fed_back(summary, re
 def test_blank_lines_do_not_count_and_are_dropped():
     model = ScriptedModel("Ana López, cualificada.\n\nNada que revisar.\n\nLlamar en 48 h.\n")
 
-    text = adapter(model).summarize({"status": "qualified"}, "es")
+    text = adapter(model).summarize({"status": "qualified"}, "es").output
 
     assert text == "Ana López, cualificada.\nNada que revisar.\nLlamar en 48 h."
     assert len(model.requests) == 1
@@ -355,9 +357,9 @@ def test_a_failed_summary_keeps_the_facts_and_flags_the_candidate():
     )
     model = ScriptedModel(FOUR_LINES, FOUR_LINES)
 
-    error = write_summary(candidate, CONFIG, adapter(model))
+    with pytest.raises(UnexpectedModelBehavior):
+        write_summary(candidate, CONFIG, adapter(model))
 
-    assert isinstance(error, UnexpectedModelBehavior)
     assert candidate.summary.text is None
     assert candidate.summary.facts["status"] == "qualified"
     assert candidate.state.flags == ["llm_failure"]
@@ -376,3 +378,29 @@ def test_token_usage_is_logged_per_call(caplog):
         "llm reply usage",
     ]
     assert "input_tokens" in caplog.records[0].getMessage()
+
+
+def test_each_call_returns_the_token_usage_of_its_run():
+    model = ScriptedModel(
+        {"language": "es", "yes_no": True}, "¿Cómo te llamas?", "Ana López, cualificada."
+    )
+    llm = adapter(model)
+
+    results = [
+        llm.extract("sí", Greet(), CandidateState(), date(2026, 9, 26), None),
+        llm.reply(Ask("name", attempt=0), CandidateState(), "es", []),
+        llm.summarize({"status": "qualified"}, "es"),
+    ]
+
+    for _, usage in results:
+        assert usage.input_tokens > 0
+        assert usage.output_tokens > 0
+
+
+def test_the_usage_adds_up_the_retried_request():
+    single = adapter(ScriptedModel("Ana López, cualificada.")).summarize({"status": "q"}, "es")
+    retried = adapter(ScriptedModel(FOUR_LINES, "Ana López, cualificada.")).summarize(
+        {"status": "q"}, "es"
+    )
+
+    assert retried.usage.input_tokens > single.usage.input_tokens
