@@ -44,3 +44,18 @@ tasks:
     desc: Lint code with ruff and apply safe fixes
     cmds:
       - uv run ruff check --fix .
+
+  container:up:
+    desc: Build and start the app in a container with podman compose (http://localhost:8000/chat)
+    cmds:
+      - podman compose up --build --detach
+
+  container:down:
+    desc: Stop the container; the database stays in its volume
+    cmds:
+      - podman compose down
+
+  container:reset:
+    desc: Stop the container and delete its database volume (after a schema change)
+    cmds:
+      - podman compose down --volumes
