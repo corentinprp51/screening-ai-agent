@@ -14,8 +14,7 @@ services:
     volumes:
       - screening-data:/app/data
     healthcheck:
-      # No spaces in the code: under podman compose the command was split on them.
-      test: ["CMD", "python", "-c", "__import__('urllib.request').request.urlopen('http://localhost:8000/')"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
       interval: 30s
       timeout: 5s
       retries: 3

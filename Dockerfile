@@ -10,6 +10,8 @@ COPY config ./config
 # Runtime stage: the virtualenv and the code, no uv.
 FROM python:3.12-slim-bookworm
 WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 RUN useradd --create-home app && mkdir /app/data && chown app /app/data
 COPY --from=build /app /app
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1
