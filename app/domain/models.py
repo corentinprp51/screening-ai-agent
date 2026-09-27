@@ -17,6 +17,9 @@ FieldType = Literal[
     "experience",
     "start_date",
 ]
+# How the reply is phrased around its action, chosen by code (the action is unchanged).
+# `resuming`: the candidate writes back after a Nudge, a Reopen or Abandoned.
+Cue = Literal["resuming"]
 AvailabilityOption = Literal["full_time", "part_time", "weekends"]
 ScheduleOption = Literal["morning", "afternoon", "evening", "flexible"]
 VehicleType = Literal["car", "moped_motorcycle"]
@@ -117,6 +120,7 @@ class Templates(BaseModel):
     fallback: dict[Language, str]
     after_close: dict[Language, str]
     nudges: dict[Language, list[str]]  # one per nudge delay, in order
+    reopen: dict[Language, str]
 
 
 class ScoreWeights(BaseModel):

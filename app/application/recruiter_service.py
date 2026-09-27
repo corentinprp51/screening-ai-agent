@@ -1,5 +1,5 @@
-"""The recruiter side: the candidate queue, a candidate's detail, confirming or
-overriding a proposed rejection, and the Impact view."""
+"""The recruiter side: the candidate queue, a candidate's detail, confirming or overriding
+a proposed rejection, reopening an Abandoned screening, and the Impact view."""
 
 from datetime import datetime, timedelta
 from typing import Literal
@@ -30,6 +30,10 @@ from app.domain.summary import recruiter_action
 
 class NotRejectionProposed(ValueError):
     """Confirm and Override only apply to a candidate in Rejection proposed."""
+
+
+class NotAbandoned(ValueError):
+    """Reopen only applies to an Abandoned candidate."""
 
 
 class LLMUnavailable(RuntimeError):
@@ -233,6 +237,16 @@ class RecruiterService:
             candidate.summary = None  # a new one is written when the questions stop again
         self._send(candidate, reply)
 
+    def reopen(self, candidate_id: int) -> None:
+        """Restart an Abandoned screening at the stage it stopped at, with the fixed reopen
+        message. The Nudge delays restart from that message."""
+        candidate = self._get(candidate_id)
+        if candidate.status != Status.ABANDONED:
+            raise NotAbandoned(candidate_id)
+        candidate.status = Status.IN_PROGRESS
+        self._record(candidate, "reopened")
+        self._send(candidate, self._config.templates.reopen[candidate.state.language])
+
     def impact(self) -> Impact:
         """The section 1 metrics over the last 30 days, from the candidates who applied
         since, their messages and events, and the consent drop-offs."""
@@ -400,7 +414,7 @@ class RecruiterService:
         recent = self._repo.list_messages(candidate.id)[-RECENT_MESSAGES:]
         try:
             reply, usage = self._llm.reply(
-                action, candidate.state, candidate.state.language, recent
+                action, candidate.state, candidate.state.language, recent, frozenset()
             )
         except Exception as error:
             stored = self._get(candidate.id)  # drop the in-memory changes

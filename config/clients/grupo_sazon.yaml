@@ -99,6 +99,11 @@ templates:
   after_close:
     es: Gracias por tu mensaje, un reclutador lo revisará.
     en: Thanks for your message, a recruiter will review it.
+  # Sent when a recruiter reopens an Abandoned screening. Not a yes/no question: the
+  # candidate's next message answers the question the screening stopped at.
+  reopen:
+    es: "¡Hola de nuevo! Hemos reabierto tu candidatura: respóndeme cuando quieras y seguimos donde lo dejamos."
+    en: "Hi again! We have reopened your application: reply whenever you like and we will pick up where we left off."
   # One per nudge delay, in order. {name} is ", <first name>" (empty while unknown);
   # {questions_left} counts the open fields and the recap.
   nudges:

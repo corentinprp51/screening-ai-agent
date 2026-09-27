@@ -9,6 +9,7 @@ from app.domain.flow import Action
 from app.domain.models import (
     Candidate,
     CandidateState,
+    Cue,
     Event,
     Extraction,
     Language,
@@ -50,8 +51,10 @@ class LLMPort(Protocol):
         state: CandidateState,
         language: Language,
         transcript: list[Message],
+        cues: frozenset[Cue],
     ) -> LLMResult[str]:
-        """Write the message for an action chosen by code, following the recent `transcript`."""
+        """Write the message for an action chosen by code, following the recent `transcript`
+        and phrased for the `cues`."""
         ...
 
     def summarize(self, facts: dict[str, JsonValue], language: Language) -> LLMResult[str]:
