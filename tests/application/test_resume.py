@@ -1,4 +1,4 @@
-"""Resume: a candidate writing back after a Nudge or after Abandoned continues at the stage
+"""Resume: a candidate writing back after a Nudge, a Reopen or Abandoned continues at the stage
 the screening stopped at, and the reply gets the `resuming` cue."""
 
 from datetime import timedelta
@@ -99,3 +99,17 @@ def test_a_recruiter_message_has_no_cue():
     recruiter.override_rejection(screening.candidate().id)
 
     assert [call["cues"] for call in llm.calls("reply")] == [frozenset()]
+
+
+def test_an_answer_after_a_reopen_resumes_with_the_cue_once():
+    screening = consented()
+    screening.tick_at(72)
+    recruiter = RecruiterService(
+        config=screening.config, llm=FakeLLM(), repo=screening.repo, clock=screening.clock
+    )
+    screening.clock.set(START + timedelta(hours=80))
+    recruiter.reopen(screening.candidate().id)
+
+    assert write_at(screening, 81, "Ana López") == "[fake] ask:license (attempt 0) +resuming"
+    assert write_at(screening, 81.5, "yes") == "[fake] ask:own_vehicle (attempt 0)"
+    assert screening.events("resumed") == []  # already In progress: reopened, not resumed
