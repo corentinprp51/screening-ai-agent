@@ -169,6 +169,44 @@ def test_page_unknown_candidate(client):
     assert client.get("/dashboard/candidates/999").status_code == 404
 
 
+def test_page_candidate_messages_after_a_cursor_returns_only_newer_messages(client):
+    id_ = candidate_id(client)
+    client.post(f"/api/screenings/{HANDLE}/messages", json={"text": "yes"})
+    greeting, answer, reply = client.get(f"/api/screenings/{HANDLE}/transcript").json()["messages"]
+
+    response = client.get(f"/dashboard/candidates/{id_}/messages", params={"after": greeting["id"]})
+
+    assert response.status_code == 200
+    assert f'data-id="{greeting["id"]}"' not in response.text
+    assert f'data-id="{answer["id"]}"' in response.text
+    assert f'data-id="{reply["id"]}"' in response.text
+
+
+def test_page_candidate_messages_after_the_last_message_is_empty(client):
+    id_ = candidate_id(client)
+    [greeting] = client.get(f"/api/screenings/{HANDLE}/transcript").json()["messages"]
+
+    response = client.get(f"/dashboard/candidates/{id_}/messages", params={"after": greeting["id"]})
+
+    assert response.status_code == 204
+
+
+def test_page_candidate_live_partial_shows_the_current_status(client):
+    id_ = proposed_rejection_id(client)
+    response = client.get(f"/dashboard/candidates/{id_}/live")
+    assert response.status_code == 200
+    assert "To confirm" in response.text and "Override" in response.text
+    assert "<html" not in response.text
+
+
+def test_page_candidate_live_partial_of_an_unknown_candidate(client):
+    assert client.get("/dashboard/candidates/999/live").status_code == 404
+
+
+def test_page_candidate_messages_of_an_unknown_candidate(client):
+    assert client.get("/dashboard/candidates/999/messages").status_code == 404
+
+
 def test_page_chat_messages_polls_the_transcript(client):
     client.post("/chat", data={"phone": HANDLE})
     response = client.get(f"/chat/{HANDLE}/messages")
