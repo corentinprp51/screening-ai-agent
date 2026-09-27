@@ -7,6 +7,7 @@ from app.api.deps import Recruiter, Screening
 from app.application.recruiter_service import (
     CandidateDetail,
     LLMUnavailable,
+    NotAbandoned,
     NotRejectionProposed,
     QueueRow,
 )
@@ -89,6 +90,11 @@ def override_rejection(candidate_id: int, service: Recruiter) -> CandidateDetail
     return _recruiter_action(service.override_rejection, candidate_id, service)
 
 
+@router.post("/candidates/{candidate_id}/reopen")
+def reopen(candidate_id: int, service: Recruiter) -> CandidateDetail:
+    return _recruiter_action(service.reopen, candidate_id, service)
+
+
 def _recruiter_action(
     action: Callable[[int], None], candidate_id: int, service: Recruiter
 ) -> CandidateDetail:
@@ -98,6 +104,8 @@ def _recruiter_action(
         raise HTTPException(404, "Unknown candidate") from error
     except NotRejectionProposed as error:
         raise HTTPException(409, "The candidate is not in Rejection proposed") from error
+    except NotAbandoned as error:
+        raise HTTPException(409, "The candidate is not Abandoned") from error
     except LLMUnavailable as error:
         raise HTTPException(503, "The message could not be written, try again") from error
     return service.detail(candidate_id)

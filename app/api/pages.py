@@ -6,7 +6,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.api.deps import Recruiter, Screening
-from app.application.recruiter_service import LLMUnavailable, NotRejectionProposed
+from app.application.recruiter_service import (
+    LLMUnavailable,
+    NotAbandoned,
+    NotRejectionProposed,
+)
 from app.application.screening_service import UnknownCandidate
 from app.domain.models import Status
 
@@ -101,6 +105,18 @@ def candidate_detail(request: Request, candidate_id: int, service: Recruiter):
     except UnknownCandidate:
         return HTMLResponse("Unknown candidate", status_code=404)
     return templates.TemplateResponse(request, "candidate.html", {"candidate": detail})
+
+
+@router.post("/dashboard/candidates/{candidate_id}/reopen")
+def candidate_reopen(candidate_id: int, service: Recruiter):
+    """Reopen from the candidate page of an Abandoned candidate."""
+    try:
+        service.reopen(candidate_id)
+    except UnknownCandidate:
+        return HTMLResponse("Unknown candidate", status_code=404)
+    except NotAbandoned:
+        return HTMLResponse("The candidate is not Abandoned", status_code=409)
+    return RedirectResponse(f"/dashboard/candidates/{candidate_id}", status_code=303)
 
 
 @router.post("/dashboard/candidates/{candidate_id}/{decision}")

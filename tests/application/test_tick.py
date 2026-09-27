@@ -218,3 +218,28 @@ def test_the_priority_score_of_an_open_candidate_is_recomputed_on_each_tick():
     screening.tick_at(71)  # 3 days later, before the deadline
 
     assert screening.candidate().score.points["start_date"] > score
+
+
+def test_after_a_reopen_the_nudges_restart_from_the_reopen_message():
+    screening = consented()
+    screening.answer("Ana López")  # at the license question
+    for hours in [1, 20, 48, 72]:
+        screening.tick_at(hours)
+    assert screening.candidate().status == Status.ABANDONED
+    recruiter = RecruiterService(
+        config=load_client_config("grupo_sazon"),
+        llm=FakeLLM(),
+        repo=screening.repo,
+        clock=screening.clock,
+    )
+    screening.clock.set(START + timedelta(hours=100))
+    recruiter.reopen(screening.candidate().id)  # the reopen message at 100 h
+
+    for hours in [100.5, 101, 120, 148, 171]:
+        screening.tick_at(hours)
+    assert [e.created_at for e in screening.events("nudge_sent")][3:] == [
+        START + timedelta(hours=hours) for hours in [101, 120, 148]
+    ]
+    assert screening.candidate().status == Status.IN_PROGRESS
+    screening.tick_at(172)
+    assert screening.candidate().status == Status.ABANDONED

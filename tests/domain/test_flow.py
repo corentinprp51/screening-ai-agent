@@ -47,6 +47,7 @@ CONFIG = ClientConfig(
         fallback={"es": "perdona", "en": "sorry"},
         after_close={"es": "gracias", "en": "thanks"},
         nudges={"es": ["¿seguimos?"], "en": ["shall we?"]},
+        reopen={"es": "reabierta", "en": "reopened"},
     ),
 )
 VALID_NAME = FieldState(status="valid", value="Ana López")

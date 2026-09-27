@@ -117,6 +117,7 @@ class Templates(BaseModel):
     fallback: dict[Language, str]
     after_close: dict[Language, str]
     nudges: dict[Language, list[str]]  # one per nudge delay, in order
+    reopen: dict[Language, str]
 
 
 class ScoreWeights(BaseModel):

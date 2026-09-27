@@ -13,6 +13,7 @@ from app.api.deps import get_dev_clock, get_recruiter_service, get_screening_ser
 from app.api.main import app, create_app
 from app.application.recruiter_service import RecruiterService
 from app.application.screening_service import ScreeningService
+from app.domain.models import Status
 
 HANDLE = "34600111222"
 
@@ -32,7 +33,9 @@ def client():
     )
     app.dependency_overrides[get_screening_service] = lambda: screening
     app.dependency_overrides[get_recruiter_service] = lambda: recruiter
-    yield TestClient(app)
+    test_client = TestClient(app)
+    test_client.repo = repo  # to set up a status no scripted message reaches
+    yield test_client
     app.dependency_overrides.clear()
 
 
@@ -150,6 +153,36 @@ def test_api_override_rejection(client):
 def test_api_confirm_is_refused_outside_rejection_proposed(client):
     response = client.post(f"/api/candidates/{candidate_id(client)}/confirm-rejection")
     assert response.status_code == 409
+
+
+def test_api_reopen(client):
+    id_ = candidate_id(client)
+    candidate = client.repo.get(id_)
+    candidate.status = Status.ABANDONED
+    client.repo.save(candidate)
+
+    response = client.post(f"/api/candidates/{id_}/reopen")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "in_progress"
+
+
+def test_api_reopen_is_refused_outside_abandoned(client):
+    response = client.post(f"/api/candidates/{candidate_id(client)}/reopen")
+    assert response.status_code == 409
+
+
+def test_page_reopen_button_redirects_to_the_candidate(client):
+    id_ = candidate_id(client)
+    candidate = client.repo.get(id_)
+    candidate.status = Status.ABANDONED
+    client.repo.save(candidate)
+    assert "Reopen" in client.get(f"/dashboard/candidates/{id_}").text
+
+    response = client.post(f"/dashboard/candidates/{id_}/reopen", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == f"/dashboard/candidates/{id_}"
 
 
 def test_page_to_confirm_tab_shows_the_decision_buttons(client):
