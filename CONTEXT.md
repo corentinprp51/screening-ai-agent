@@ -42,8 +42,26 @@ Where the screening currently stands: consent, one of the fields, or the recap.
 **Recap**:
 The final list of captured fields that the candidate confirms or corrects before an outcome.
 
+**Nudge**:
+A fixed message sent to a silent candidate at set delays after their last unanswered question (1 h, 20 h, 48 h), to bring them back to the screening.
+_Avoid_: reminder, follow-up (a follow-up is the one extra question on an incomplete field)
+
+**Resume**:
+A silent or Abandoned candidate writing back: the screening continues at the stage it stopped at, opened by a one-line reminder of where it stands.
+_Avoid_: restart
+
+**Forwarded question**:
+A question the candidate asks during the screening, passed on to a recruiter unanswered and kept on the candidate's profile; the screening then goes back to the pending question.
+_Avoid_: FAQ
+
+**Call request**:
+The candidate accepting the offer to talk to a person, which a recruiter sees as their next action. The screening goes on meanwhile.
+
 **Knock-out**:
 A rule whose failure stops the questions and proposes a rejection: no valid driver's license, no own vehicle, or a city outside the service area.
+
+**Abuse**:
+A candidate message that insults, insists off-topic or tries to steer the agent. The first one gets a neutral refocus on the pending question; a second one in the same screening proposes a rejection. Before consent, a second one is treated as declined consent. It is behaviour in the screening, not a knock-out.
 
 **Service area**:
 The cities, and optionally their zones, that a client serves in each country. The city is what the knock-out checks.
@@ -71,7 +89,7 @@ Qualified, but with at least one field needing review or a recap left unconfirme
 _Avoid_: to review (too close to "needs review")
 
 **Rejection proposed**:
-The waiting status after a knock-out fails: questions stop until a recruiter confirms the rejection or overrides it. It is not an outcome.
+The waiting status after a knock-out fails or after repeated abuse: questions stop until a recruiter confirms the rejection or overrides it. It is not an outcome.
 _Avoid_: disqualified
 
 **Rejected**:
@@ -81,10 +99,20 @@ A proposed rejection that a recruiter confirmed. Only then is the candidate told
 The candidate opted out after giving consent.
 
 **Abandoned**:
-The candidate stopped answering before the required fields were captured.
+The candidate stopped answering for 72 h after their last unanswered question, before the questions ended. A candidate who only left the recap unconfirmed is Qualified to review instead.
+
+**No answer to the greeting**:
+A candidate who never answered the consent question within 72 h. They are erased like a declined consent, and only counted, anonymously, as a drop-off at consent. It is not Abandoned.
+
+**Completed screening**:
+A screening whose questions stopped with the candidate still engaged: Qualified, Qualified to review, Rejection proposed or Rejected. It is what the completion rate counts, out of the candidates who gave consent.
 
 **Override**:
 A recruiter's decision to set aside a proposed rejection. The screening resumes at the next field.
+
+**Reopen**:
+A recruiter's decision to restart an Abandoned screening at the stage it stopped at, with a fixed message to the candidate.
+_Avoid_: override (which applies to a proposed rejection)
 
 ### Ranking
 
