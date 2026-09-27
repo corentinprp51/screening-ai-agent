@@ -1,6 +1,12 @@
 version: "3"
 
 tasks:
+  default:
+    desc: List the available tasks
+    cmds:
+      - task --list
+    silent: true
+
   dev:install:
     desc: Install dependencies with uv
     cmds:
