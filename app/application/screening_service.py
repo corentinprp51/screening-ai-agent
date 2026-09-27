@@ -40,6 +40,7 @@ from app.domain.flow import (
 from app.domain.models import (
     Candidate,
     ClientConfig,
+    Cue,
     Event,
     Extraction,
     FieldState,
@@ -122,7 +123,14 @@ class ScreeningService:
         """Run one turn and return the agent's reply. Never raises, except for an
         unknown candidate."""
         candidate = self._get(handle)
-        if candidate.status != Status.IN_PROGRESS:
+        events: list[Event] = []
+        resumed = candidate.status == Status.ABANDONED
+        if resumed:
+            # Resume at the stage it stopped at. On an LLM failure the candidate is reloaded,
+            # so this is kept only if the turn succeeds.
+            candidate.status = Status.IN_PROGRESS
+            events.append(self._event(candidate, "resumed"))
+        elif candidate.status != Status.IN_PROGRESS:
             return self._after_close(candidate, text)
 
         # Both LLM calls happen before any write except their `llm_call` events, so a failure
@@ -132,7 +140,7 @@ class ScreeningService:
         last_agent_message = next(
             (m.content for m in reversed(messages) if m.role == "agent"), None
         )
-        events: list[Event] = []
+        resuming = resumed or self._nudged_since_last_message(candidate, messages)
         try:
             extraction, usage = self._llm.extract(
                 text, pending, candidate.state, self._clock.now().date(), last_agent_message
@@ -143,8 +151,14 @@ class ScreeningService:
             action = next_action(candidate.state, self._config)
             # The candidate message is stored after the LLM calls, but the reply follows it.
             recent = [*messages, self._message(candidate, "candidate", text)][-RECENT_MESSAGES:]
+            # A closing message is not a welcome back.
+            cues: frozenset[Cue] = (
+                frozenset({"resuming"})
+                if resuming and not isinstance(action, Close)
+                else frozenset()
+            )
             reply, usage = self._llm.reply(
-                action, candidate.state, candidate.state.language, recent
+                action, candidate.state, candidate.state.language, recent, cues
             )
             self._record_llm_call(candidate, "reply", usage)
         except Exception as error:
@@ -175,6 +189,10 @@ class ScreeningService:
         self._repo.save(candidate)
         self._send(candidate, reply)
         return reply
+
+    def _nudged_since_last_message(self, candidate: Candidate, messages: list[Message]) -> bool:
+        since_last_message = silence(messages, self._repo.list_events(candidate.id))
+        return since_last_message is not None and since_last_message.last_nudge > 0
 
     def tick(self) -> None:
         """The sweep, run on a schedule: recompute the priority score of every open

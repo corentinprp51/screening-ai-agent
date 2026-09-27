@@ -27,7 +27,15 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from app.application.ports import LLMResult, LLMUsage
 from app.domain.fields import format_value
 from app.domain.flow import Action, Close, Recap
-from app.domain.models import CandidateState, ClientConfig, Extraction, Language, Message
+from app.domain.models import (
+    CandidateState,
+    ClientConfig,
+    Cue,
+    Extraction,
+    Language,
+    Message,
+)
+from app.domain.reengagement import questions_left
 
 logger = logging.getLogger(__name__)
 # No startup banner: it would land in the middle of the terminal chat.
@@ -104,6 +112,7 @@ class PydanticAILLM:
         state: CandidateState,
         language: Language,
         transcript: list[Message],
+        cues: frozenset[Cue],
     ) -> LLMResult[str]:
         prompt = _prompts.get_template("reply.md").render(
             persona=self._config.persona,
@@ -115,6 +124,8 @@ class PydanticAILLM:
             name=state.field("name").value if state.field("name").status == "valid" else None,
             language=LANGUAGE_NAMES[language],
             transcript=transcript,
+            cues=cues,
+            questions_left=questions_left(state, self._config),
         )
         return self._run("reply", self._replier, prompt, WRITE_TEMPERATURE, deps=action)
 

@@ -19,7 +19,7 @@ from pydantic import JsonValue, ValidationError
 from app.application.ports import LLMResult, LLMUsage
 from app.domain.fields import format_value
 from app.domain.flow import Action, Ask, AskCorrection, Close, Confirm, FollowUp, Greet, Recap
-from app.domain.models import CandidateState, Extraction, Language, Message
+from app.domain.models import CandidateState, Cue, Extraction, Language, Message
 
 LLMCall = Literal["extract", "reply", "summarize"]
 
@@ -86,6 +86,7 @@ class FakeLLM:
         state: CandidateState,
         language: Language,
         transcript: list[Message],
+        cues: frozenset[Cue],
     ) -> LLMResult[str]:
         self._log.append(
             (
@@ -95,6 +96,7 @@ class FakeLLM:
                     "state": state.model_copy(deep=True),
                     "language": language,
                     "transcript": transcript,
+                    "cues": cues,
                 },
             )
         )
@@ -122,6 +124,7 @@ class FakeLLM:
                     label += f" (reply within {within_hours} h)"
                 if offer:
                     label += " (offer contact)"
+        label += "".join(f" +{cue}" for cue in sorted(cues))
         return LLMResult(f"[fake] {label}", LLMUsage())
 
     def summarize(self, facts: dict[str, JsonValue], language: Language) -> LLMResult[str]:
