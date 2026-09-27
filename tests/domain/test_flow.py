@@ -16,6 +16,8 @@ from app.domain.models import (
     ClientConfig,
     FieldConfig,
     FieldState,
+    ImpactConfig,
+    ImpactTargets,
     License,
     OpenShifts,
     OwnVehicle,
@@ -24,6 +26,7 @@ from app.domain.models import (
     Scoring,
     Status,
     Templates,
+    TokenPrices,
 )
 
 CONFIG = ClientConfig(
@@ -41,6 +44,24 @@ CONFIG = ClientConfig(
     scoring=Scoring(
         weights=ScoreWeights(availability=30, schedule=20, start_date=30, experience=20),
         open_shifts=OpenShifts(availability=["full_time"], schedule=["evening"]),
+    ),
+    impact=ImpactConfig(
+        currency="EUR",
+        recruiters=1,
+        calls_per_recruiter_per_day=15,
+        working_days_per_week=5,
+        call_minutes=15,
+        unanswered_calls_per_candidate=1,
+        no_answer_rate=0.6,
+        unqualified_time_share=0.8,
+        recruiter_hourly_cost=20,
+        llm_price_per_million_tokens=TokenPrices(input=0.4, output=1.6),
+        targets=ImpactTargets(
+            completion_rate=0.6,
+            first_message_minutes=5,
+            qualified_time_share=0.8,
+            needs_review_share=0.1,
+        ),
     ),
     templates=Templates(
         greeting={"es": "hola", "en": "hi"},

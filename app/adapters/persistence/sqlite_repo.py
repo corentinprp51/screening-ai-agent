@@ -143,13 +143,16 @@ class SqliteCandidateRepository:
             session.add(ConsentDropOffRow(client_id=client_id, created_at=at))
             session.commit()
 
-    def count_consent_drop_offs(self, client_id: str) -> int:
+    def count_consent_drop_offs(self, client_id: str, since: datetime | None = None) -> int:
         with Session(self._engine) as session:
-            return session.exec(
+            query = (
                 select(func.count())
                 .select_from(ConsentDropOffRow)
                 .where(ConsentDropOffRow.client_id == client_id)
-            ).one()
+            )
+            if since is not None:
+                query = query.where(ConsentDropOffRow.created_at >= since)
+            return session.exec(query).one()
 
 
 def _to_candidate(row: CandidateRow) -> Candidate:

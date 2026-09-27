@@ -60,3 +60,26 @@ def test_a_nudge_names_the_candidate_and_the_questions_left():
         "¿Seguimos, Ana? Ya casi está, preguntas pendientes: 3."
     )
     assert config.nudge("en", 1, None, 3) == ("Shall we carry on? Almost done, questions left: 3.")
+
+
+def test_the_impact_baselines_are_loaded():
+    impact = load_client_config("grupo_sazon").impact
+
+    assert (impact.call_minutes, impact.unanswered_calls_per_candidate) == (15, 1.5)
+    assert impact.recruiter_hourly_cost == 20
+    assert (
+        impact.llm_price_per_million_tokens.input,
+        impact.llm_price_per_million_tokens.output,
+    ) == (
+        0.4,
+        1.6,
+    )
+    assert (impact.no_answer_rate, impact.unqualified_time_share) == (0.6, 0.8)
+    assert impact.targets.completion_rate == 0.6
+
+
+def test_a_config_without_the_impact_baselines_fails_at_load(tmp_path):
+    _write_config(tmp_path, lambda data: data.pop("impact"))
+
+    with pytest.raises(ValueError, match="impact"):
+        load_client_config("bad", config_dir=tmp_path)

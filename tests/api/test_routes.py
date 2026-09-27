@@ -112,6 +112,19 @@ def test_page_dashboard(client):
     assert HANDLE in response.text
 
 
+def test_api_impact(client):
+    client.post("/api/applications", json={"phone": HANDLE})
+    response = client.get("/api/impact")
+    assert response.status_code == 200
+    assert response.json()["candidates"] == 1
+
+
+def test_page_impact_tab(client):
+    response = client.get("/dashboard/impact")
+    assert response.status_code == 200
+    assert "Completion rate" in response.text
+
+
 def test_page_candidate_detail(client):
     response = client.get(f"/dashboard/candidates/{candidate_id(client)}")
     assert response.status_code == 200

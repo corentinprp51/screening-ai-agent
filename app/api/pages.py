@@ -98,6 +98,13 @@ def dashboard(request: Request, service: Recruiter, status: Status | None = None
     )
 
 
+@router.get("/dashboard/impact")
+def impact(request: Request, service: Recruiter):
+    return templates.TemplateResponse(
+        request, "impact.html", {"impact": service.impact(), "current": "impact"}
+    )
+
+
 @router.get("/dashboard/candidates/{candidate_id}")
 def candidate_detail(request: Request, candidate_id: int, service: Recruiter):
     try:

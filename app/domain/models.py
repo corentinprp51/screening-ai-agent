@@ -150,6 +150,38 @@ class Scoring(BaseModel):
     open_shifts: OpenShifts
 
 
+class ImpactTargets(BaseModel):
+    """The pilot targets of the process design, section 1."""
+
+    completion_rate: float = Field(ge=0, le=1)
+    first_message_minutes: float = Field(gt=0)
+    qualified_time_share: float = Field(ge=0, le=1)
+    needs_review_share: float = Field(ge=0, le=1)
+
+
+class TokenPrices(BaseModel):
+    """The LLM price per million tokens, in the client's currency."""
+
+    input: float = Field(ge=0)
+    output: float = Field(ge=0)
+
+
+class ImpactConfig(BaseModel):
+    """Today's phone screening, the Impact view's baselines, and the pilot targets."""
+
+    currency: str
+    recruiters: int = Field(gt=0)
+    calls_per_recruiter_per_day: int = Field(gt=0)
+    working_days_per_week: int = Field(gt=0, le=7)
+    call_minutes: float = Field(gt=0)  # the average screening call
+    unanswered_calls_per_candidate: float = Field(ge=0)  # each takes a call slot
+    no_answer_rate: float = Field(ge=0, le=1)  # candidates never reached by phone
+    unqualified_time_share: float = Field(ge=0, le=1)  # recruiter time on unqualified ones
+    recruiter_hourly_cost: float = Field(ge=0)
+    llm_price_per_million_tokens: TokenPrices
+    targets: ImpactTargets
+
+
 # Country → city → its zones (possibly none).
 ServiceAreas = dict[str, dict[str, list[str]]]
 
@@ -167,6 +199,7 @@ class ClientConfig(BaseModel):
     service_areas: ServiceAreas = Field(min_length=1)
     platforms: list[str] = Field(min_length=1)  # known delivery platforms, anything else is other
     scoring: Scoring
+    impact: ImpactConfig
     templates: Templates
 
     @model_validator(mode="after")

@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from app.api.deps import Recruiter, Screening
 from app.application.recruiter_service import (
     CandidateDetail,
+    Impact,
     LLMUnavailable,
     NotAbandoned,
     NotRejectionProposed,
@@ -70,6 +71,11 @@ def get_transcript(handle: str, service: Screening) -> TranscriptOut:
 @router.get("/candidates")
 def list_candidates(service: Recruiter, status: Status | None = None) -> list[QueueRow]:
     return service.queue(status)
+
+
+@router.get("/impact")
+def get_impact(service: Recruiter) -> Impact:
+    return service.impact()
 
 
 @router.get("/candidates/{candidate_id}")

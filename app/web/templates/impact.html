@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Impact{% endblock %}
+{% block width %}max-w-6xl{% endblock %}
+{% macro show(value, unit) -%}
+  {%- if value is none -%}—
+  {%- elif unit == "share" -%}{{ "%.0f" | format(value * 100) }}%
+  {%- elif unit == "minutes" -%}{{ "%.1f" | format(value) }} min
+  {%- elif unit == "hours" -%}{{ "%.1f" | format(value) }} h
+  {%- else -%}{{ "%.3f" | format(value) }} {{ impact.currency }}
+  {%- endif -%}
+{%- endmacro %}
+{% block content %}
+<div class="flex items-baseline justify-between mb-4">
+  <h1 class="text-2xl font-semibold">Impact</h1>
+  <p class="text-sm text-slate-500">Last {{ impact.days }} days, since {{ impact.since.strftime("%Y-%m-%d") }}</p>
+</div>
+
+{% include "partials/dashboard_nav.html" %}
+
+<p class="mb-4 text-sm text-slate-600">
+  {{ impact.contacted }} contacted:
+  {{ impact.consent_drop_offs }} never answered the greeting, {{ impact.consented }} gave consent,
+  {{ impact.completed }} completed the screening.
+</p>
+
+<div class="bg-white rounded-lg shadow overflow-x-auto">
+  <table class="w-full text-sm">
+    <thead class="text-left text-slate-500 border-b">
+      <tr>
+        <th class="p-3">Metric</th><th class="p-3">Last {{ impact.days }} days</th>
+        <th class="p-3">Today, by phone</th><th class="p-3">Target</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for metric in impact.metrics %}
+      <tr class="border-b last:border-0">
+        <td class="p-3">
+          <p class="font-medium">{{ metric.label }}</p>
+          <p class="mt-1 text-xs text-slate-500">{{ metric.note }}</p>
+        </td>
+        <td class="p-3 text-lg font-semibold">{{ show(metric.value, metric.unit) }}</td>
+        <td class="p-3 text-slate-600">{{ show(metric.baseline, metric.unit) }}</td>
+        <td class="p-3 text-slate-600">{{ show(metric.target, metric.unit) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
