@@ -140,7 +140,7 @@ class ScreeningService:
         last_agent_message = next(
             (m.content for m in reversed(messages) if m.role == "agent"), None
         )
-        resuming = resumed or self._nudged_since_last_message(candidate, messages)
+        resuming = resumed or self._nudged_or_reopened_since_last_message(candidate, messages)
         try:
             extraction, usage = self._llm.extract(
                 text, pending, candidate.state, self._clock.now().date(), last_agent_message
@@ -190,9 +190,19 @@ class ScreeningService:
         self._send(candidate, reply)
         return reply
 
-    def _nudged_since_last_message(self, candidate: Candidate, messages: list[Message]) -> bool:
-        since_last_message = silence(messages, self._repo.list_events(candidate.id))
-        return since_last_message is not None and since_last_message.last_nudge > 0
+    def _nudged_or_reopened_since_last_message(
+        self, candidate: Candidate, messages: list[Message]
+    ) -> bool:
+        events = self._repo.list_events(candidate.id)
+        since_last_message = silence(messages, events)
+        if since_last_message is None:
+            return False
+        # A Reopen starts the silence, so its message is the question the silence counts from.
+        reopened = any(
+            event.type == "reopened" and event.created_at >= since_last_message.asked_at
+            for event in events
+        )
+        return since_last_message.last_nudge > 0 or reopened
 
     def tick(self) -> None:
         """The sweep, run on a schedule: recompute the priority score of every open

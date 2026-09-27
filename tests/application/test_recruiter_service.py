@@ -9,6 +9,7 @@ from app.adapters.persistence.sqlite_repo import SqliteCandidateRepository, crea
 from app.application.ports import RECENT_MESSAGES
 from app.application.recruiter_service import (
     LLMUnavailable,
+    NotAbandoned,
     NotRejectionProposed,
     RecruiterService,
 )
@@ -397,3 +398,77 @@ def test_an_override_onto_another_failed_knock_out_records_the_reply_and_the_sum
     recruiter.override_rejection(candidate_id)
 
     assert llm_calls(recruiter.detail(candidate_id))[len(before) :] == ["reply", "summarize"]
+
+
+def abandon(screening: ScreeningService, clock, phone: str) -> int:
+    """A candidate silent at the license question until the deadline."""
+    screening.apply(phone)
+    for text in ["yes", "Ana López"]:
+        screening.handle_message(phone, text)
+    clock.set(START + timedelta(hours=72))
+    screening.tick()
+    return screening.candidate(phone).id
+
+
+def test_reopening_restarts_an_abandoned_screening_at_its_stage(services):
+    screening, recruiter, clock = services
+    candidate_id = abandon(screening, clock, "600000001")
+    clock.set(START + timedelta(hours=80))
+
+    recruiter.reopen(candidate_id)
+
+    detail = recruiter.detail(candidate_id)
+    assert (detail.status, detail.stage) == (Status.IN_PROGRESS, "license")
+    last = detail.messages[-1]
+    assert (last.role, last.language, last.created_at) == ("agent", "es", clock.now())
+    assert last.content == (
+        "¡Hola de nuevo! Hemos reabierto tu candidatura: "
+        "respóndeme cuando quieras y seguimos donde lo dejamos."
+    )
+    [reopened] = [e for e in detail.events if e.type == "reopened"]
+    assert (reopened.stage, reopened.created_at) == ("license", clock.now())
+
+
+def test_the_reopen_message_is_in_the_candidate_language(services, llm):
+    screening, recruiter, clock = services
+    llm.queue(
+        Extraction(yes_no=True, language="en"),
+        Extraction(
+            name=Extracted(value="Ana López", raw_answer="Ana López", confidence=1.0),
+            language="en",
+        ),
+    )
+    candidate_id = abandon(screening, clock, "600000001")
+
+    recruiter.reopen(candidate_id)
+
+    assert recruiter.detail(candidate_id).messages[-1].content == (
+        "Hi again! We have reopened your application: "
+        "reply whenever you like and we will pick up where we left off."
+    )
+
+
+def test_reopening_makes_no_llm_call(services, llm):
+    screening, recruiter, clock = services
+    candidate_id = abandon(screening, clock, "600000001")
+    before = len(llm.calls("reply"))
+
+    recruiter.reopen(candidate_id)
+
+    assert len(llm.calls("reply")) == before
+
+
+def test_a_candidate_that_is_not_abandoned_cannot_be_reopened(services):
+    screening, recruiter, _ = services
+    candidate_id = propose_rejection(screening, "600000001")
+
+    with pytest.raises(NotAbandoned):
+        recruiter.reopen(candidate_id)
+    assert recruiter.detail(candidate_id).status == Status.REJECTION_PROPOSED
+
+
+def test_reopening_an_unknown_candidate_fails(services):
+    _, recruiter, _ = services
+
+    with pytest.raises(UnknownCandidate):
+        recruiter.reopen(999)

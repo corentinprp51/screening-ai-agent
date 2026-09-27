@@ -1,5 +1,5 @@
 """Re-engaging a silent candidate: the Nudge or the deadline that is due, counted from their
-last unanswered question. A Nudge does not restart the delays."""
+last unanswered question. A Nudge does not restart the delays; a recruiter's Reopen does."""
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -27,16 +27,21 @@ class Silence:
 def silence(messages: list[Message], events: list[Event]) -> Silence | None:
     """The silence since the candidate's last message, None when they wrote last. The agent
     messages after it are the question (possibly after another message, e.g. a recruiter's
-    override following a close), then one per Nudge sent since."""
+    override following a close, or the reopen message), then one per Nudge sent since. A
+    Reopen starts a new silence: the Nudges sent before it no longer count."""
     unanswered = list(takewhile(lambda m: m.role == "agent", reversed(messages)))[::-1]
     if not unanswered:
         return None
     answered = messages[: -len(unanswered)]
-    answered_at = answered[-1].created_at if answered else None
+    # The silence starts at the candidate's last message or the last Reopen, the later one.
+    starts = [event.created_at for event in events if event.type == "reopened"]
+    if answered:
+        starts.append(answered[-1].created_at)
+    silent_since = max(starts, default=None)
     nudges = [
         event.payload["number"]
         for event in events
-        if event.type == "nudge_sent" and (answered_at is None or event.created_at > answered_at)
+        if event.type == "nudge_sent" and (silent_since is None or event.created_at > silent_since)
     ]
     return Silence(unanswered[-len(nudges) - 1].created_at, max(nudges, default=0))
 

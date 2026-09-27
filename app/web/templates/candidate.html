@@ -25,6 +25,15 @@
 </div>
 {% endif %}
 
+{% if candidate.status == "abandoned" %}
+<div class="mb-4 flex flex-wrap items-center gap-4 rounded-lg bg-slate-50 border p-3 text-sm">
+  <span>Stopped answering at <strong>{{ candidate.stage }}</strong></span>
+  <form method="post" action="/dashboard/candidates/{{ candidate.id }}/reopen">
+    <button class="rounded border px-3 py-1 text-sm bg-white">Reopen</button>
+  </form>
+</div>
+{% endif %}
+
 {% if candidate.flags %}
 <div class="mb-4">
   {% for flag in candidate.flags %}<span class="inline-block rounded bg-amber-100 text-amber-800 px-2 py-0.5 mr-1 text-sm">{{ flag }}</span>{% endfor %}

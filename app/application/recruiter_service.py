@@ -1,5 +1,5 @@
-"""The recruiter side: the candidate queue, a candidate's detail, and confirming or
-overriding a proposed rejection."""
+"""The recruiter side: the candidate queue, a candidate's detail, confirming or overriding
+a proposed rejection, and reopening an Abandoned screening."""
 
 from datetime import datetime
 
@@ -29,6 +29,10 @@ from app.domain.summary import recruiter_action
 
 class NotRejectionProposed(ValueError):
     """Confirm and Override only apply to a candidate in Rejection proposed."""
+
+
+class NotAbandoned(ValueError):
+    """Reopen only applies to an Abandoned candidate."""
 
 
 class LLMUnavailable(RuntimeError):
@@ -195,6 +199,16 @@ class RecruiterService:
             candidate.status = Status.IN_PROGRESS
             candidate.summary = None  # a new one is written when the questions stop again
         self._send(candidate, reply)
+
+    def reopen(self, candidate_id: int) -> None:
+        """Restart an Abandoned screening at the stage it stopped at, with the fixed reopen
+        message. The Nudge delays restart from that message."""
+        candidate = self._get(candidate_id)
+        if candidate.status != Status.ABANDONED:
+            raise NotAbandoned(candidate_id)
+        candidate.status = Status.IN_PROGRESS
+        self._record(candidate, "reopened")
+        self._send(candidate, self._config.templates.reopen[candidate.state.language])
 
     def _get(self, candidate_id: int) -> Candidate:
         candidate = self._repo.get(candidate_id)

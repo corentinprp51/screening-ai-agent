@@ -109,6 +109,26 @@ def test_after_an_override_the_silence_starts_at_the_new_question():
     assert silence(messages, []) == Silence(ASKED_AT, 0)
 
 
+def test_after_a_reopen_the_silence_starts_at_the_reopen_message():
+    # the question and its three nudges, then the recruiter's reopen message
+    messages = [message("candidate", -80), message("agent", -80)]
+    messages += [message("agent", -79), message("agent", -60), message("agent", -32)]
+    messages += [message("agent", 0)]
+    events = [nudge_event(1, -79), nudge_event(2, -60), nudge_event(3, -32)]
+    events += [Event(type="reopened", stage="name", created_at=ASKED_AT)]
+
+    assert silence(messages, events) == Silence(ASKED_AT, 0)
+
+
+def test_a_reopen_after_a_message_after_close_starts_at_the_reopen_message():
+    # the candidate wrote while Abandoned and got the after_close reply, then the reopen
+    messages = [message("agent", -80), message("candidate", -5), message("agent", -5)]
+    messages += [message("agent", 0)]
+    events = [nudge_event(3, -32), Event(type="reopened", stage="name", created_at=ASKED_AT)]
+
+    assert silence(messages, events) == Silence(ASKED_AT, 0)
+
+
 def test_no_silence_when_the_candidate_wrote_last():
     assert silence([message("agent", -1), message("candidate", 0)], []) is None
 
