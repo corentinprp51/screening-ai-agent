@@ -1,6 +1,7 @@
 """The flow: the next action is derived from the candidate state (ADR 0001)."""
 
 from dataclasses import dataclass
+from typing import Literal
 
 from app.domain.fields import KNOCK_OUTS, MAX_ATTEMPTS
 from app.domain.models import CandidateState, ClientConfig, Status
@@ -128,3 +129,50 @@ def stage_of(action: Action) -> str:
             return "recap"
         case Close():
             return "closed"
+
+
+# A stage dot in the queue: settled, the current step, the failed knock-out, not reached
+# because the screening stopped (Withdrawn, Abandoned), or not reached yet.
+DotState = Literal["done", "current", "failed", "stopped", "todo"]
+
+
+@dataclass(frozen=True)
+class StageDot:
+    stage: str
+    state: DotState
+
+
+def stage_dots(status: Status, state: CandidateState, config: ClientConfig) -> list[StageDot]:
+    """One dot per stage: consent, each config field in order, recap, closed. A stage is
+    done once settled. In progress, the current step is marked; on a proposed or confirmed
+    rejection, the failed knock-out, or the close for abuse (no field). A stopped screening
+    greys out the stages not done."""
+    marked: str | None = None
+    mark: DotState = "current"
+    if status == Status.IN_PROGRESS:
+        marked = state.stage
+    elif status in (Status.REJECTION_PROPOSED, Status.REJECTED):
+        proposal = next_action(state, config)
+        marked = proposal.field if isinstance(proposal, Close) and proposal.field else "closed"
+        mark = "failed"
+    not_done: DotState = "stopped" if status in (Status.WITHDRAWN, Status.ABANDONED) else "todo"
+    stages = ["consent", *(field.type for field in config.fields), "recap", "closed"]
+    dots = []
+    for stage in stages:
+        if stage == marked:
+            dots.append(StageDot(stage, mark))
+        elif _settled(stage, status, state):
+            dots.append(StageDot(stage, "done"))
+        else:
+            dots.append(StageDot(stage, not_done))
+    return dots
+
+
+def _settled(stage: str, status: Status, state: CandidateState) -> bool:
+    if stage == "consent":
+        return bool(state.consent)
+    if stage == "recap":
+        return state.recap_confirmed
+    if stage == "closed":
+        return status in (Status.QUALIFIED, Status.QUALIFIED_TO_REVIEW)
+    return state.field(stage).status in ("valid", "needs_review")

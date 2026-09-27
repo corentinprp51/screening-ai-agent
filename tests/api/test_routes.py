@@ -60,8 +60,17 @@ def test_api_get_transcript(client):
     assert len(response.json()["messages"]) == 1
 
 
-def test_page_chat_start_form(client):
-    assert client.get("/chat").status_code == 200
+def test_page_chat_start_form_names_the_agent_and_client_from_config(client):
+    response = client.get("/chat")
+    assert response.status_code == 200
+    assert "Start a chat with Lucía · Grupo Sazón" in response.text
+
+
+def test_page_apply_shows_the_validation_error(client):
+    response = client.post("/chat", data={"phone": "no digits"})
+    assert response.status_code == 422
+    assert "A phone number needs digits" in response.text
+    assert "Start a chat with Lucía" in response.text
 
 
 def test_page_apply_redirects_to_the_chat(client):
@@ -136,6 +145,21 @@ def test_page_dashboard(client):
     assert HANDLE in response.text
 
 
+def test_page_dashboard_rows_refreshes_the_table_body_for_the_status_tab(client):
+    client.post("/api/applications", json={"phone": HANDLE})
+    response = client.get("/dashboard/rows", params={"status": "in_progress"})
+    assert response.status_code == 200
+    assert HANDLE in response.text
+    assert "<table" not in response.text
+    assert HANDLE not in client.get("/dashboard/rows", params={"status": "qualified"}).text
+
+
+def test_page_dashboard_polls_its_rows_for_the_current_tab(client):
+    response = client.get("/dashboard", params={"status": "qualified"})
+    assert 'hx-get="/dashboard/rows?status=qualified"' in response.text
+    assert 'hx-trigger="every 5s"' in response.text
+
+
 def test_api_impact(client):
     client.post("/api/applications", json={"phone": HANDLE})
     response = client.get("/api/impact")
@@ -158,6 +182,44 @@ def test_page_candidate_detail(client):
 
 def test_page_unknown_candidate(client):
     assert client.get("/dashboard/candidates/999").status_code == 404
+
+
+def test_page_candidate_messages_after_a_cursor_returns_only_newer_messages(client):
+    id_ = candidate_id(client)
+    client.post(f"/api/screenings/{HANDLE}/messages", json={"text": "yes"})
+    greeting, answer, reply = client.get(f"/api/screenings/{HANDLE}/transcript").json()["messages"]
+
+    response = client.get(f"/dashboard/candidates/{id_}/messages", params={"after": greeting["id"]})
+
+    assert response.status_code == 200
+    assert f'data-id="{greeting["id"]}"' not in response.text
+    assert f'data-id="{answer["id"]}"' in response.text
+    assert f'data-id="{reply["id"]}"' in response.text
+
+
+def test_page_candidate_messages_after_the_last_message_is_empty(client):
+    id_ = candidate_id(client)
+    [greeting] = client.get(f"/api/screenings/{HANDLE}/transcript").json()["messages"]
+
+    response = client.get(f"/dashboard/candidates/{id_}/messages", params={"after": greeting["id"]})
+
+    assert response.status_code == 204
+
+
+def test_page_candidate_live_partial_shows_the_current_status(client):
+    id_ = proposed_rejection_id(client)
+    response = client.get(f"/dashboard/candidates/{id_}/live")
+    assert response.status_code == 200
+    assert "To confirm" in response.text and "Override" in response.text
+    assert "<html" not in response.text
+
+
+def test_page_candidate_live_partial_of_an_unknown_candidate(client):
+    assert client.get("/dashboard/candidates/999/live").status_code == 404
+
+
+def test_page_candidate_messages_of_an_unknown_candidate(client):
+    assert client.get("/dashboard/candidates/999/messages").status_code == 404
 
 
 def test_page_chat_messages_polls_the_transcript(client):

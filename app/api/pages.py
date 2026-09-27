@@ -35,8 +35,8 @@ def home():
 
 
 @router.get("/chat")
-def chat_start(request: Request):
-    return templates.TemplateResponse(request, "chat_start.html")
+def chat_start(request: Request, service: Screening):
+    return templates.TemplateResponse(request, "chat_start.html", {"persona": service.persona})
 
 
 @router.post("/chat")
@@ -50,7 +50,10 @@ def chat_apply(
         candidate = service.apply(phone, name)
     except ValueError as error:
         return templates.TemplateResponse(
-            request, "chat_start.html", {"error": str(error)}, status_code=422
+            request,
+            "chat_start.html",
+            {"persona": service.persona, "error": str(error)},
+            status_code=422,
         )
     return RedirectResponse(f"/chat/{candidate.handle}", status_code=303)
 
@@ -112,6 +115,14 @@ def dashboard(request: Request, service: Recruiter, status: Status | None = None
     )
 
 
+@router.get("/dashboard/rows")
+def dashboard_rows(request: Request, service: Recruiter, status: Status | None = None):
+    """HTMX polling: the queue's table body for the status tab, so the list stays live."""
+    return templates.TemplateResponse(
+        request, "partials/queue_rows.html", {"rows": service.queue(status), "current": status}
+    )
+
+
 @router.get("/dashboard/impact")
 def impact(request: Request, service: Recruiter):
     return templates.TemplateResponse(
@@ -126,6 +137,30 @@ def candidate_detail(request: Request, candidate_id: int, service: Recruiter):
     except UnknownCandidate:
         return HTMLResponse("Unknown candidate", status_code=404)
     return templates.TemplateResponse(request, "candidate.html", {"candidate": detail})
+
+
+@router.get("/dashboard/candidates/{candidate_id}/live")
+def candidate_live(request: Request, candidate_id: int, service: Recruiter):
+    """HTMX polling: everything on the candidate page but the transcript."""
+    try:
+        detail = service.detail(candidate_id)
+    except UnknownCandidate:
+        return HTMLResponse("Unknown candidate", status_code=404)
+    return templates.TemplateResponse(
+        request, "partials/candidate_live.html", {"candidate": detail}
+    )
+
+
+@router.get("/dashboard/candidates/{candidate_id}/messages")
+def candidate_messages(request: Request, candidate_id: int, service: Recruiter, after: int = 0):
+    """HTMX polling: the transcript messages after the last one on screen."""
+    try:
+        messages = service.messages(candidate_id, after)
+    except UnknownCandidate:
+        return HTMLResponse("Unknown candidate", status_code=404)
+    if not messages:
+        return HTMLResponse(status_code=204)  # nothing new: no swap
+    return templates.TemplateResponse(request, "partials/bubbles.html", {"messages": messages})
 
 
 @router.post("/dashboard/candidates/{candidate_id}/reopen")

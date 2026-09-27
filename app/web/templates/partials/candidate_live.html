@@ -1,0 +1,102 @@
+{# Everything on the candidate page but the transcript, refreshed every 3 s. An element with
+   `data-live` flashes when its text changed since the last refresh. #}
+<div class="lg:col-span-2">
+<div class="flex flex-wrap items-baseline gap-3 mb-4">
+  <h1 class="text-2xl font-semibold" data-live="name">{{ candidate.name or candidate.handle }}</h1>
+  <span class="text-slate-500">{{ candidate.handle }}</span>
+  <span class="rounded-full" data-live="status">{% with status = candidate.status %}{% include "partials/status_pill.html" %}{% endwith %}</span>
+  <span class="text-sm text-slate-500" data-live="stage">stage: {{ candidate.stage }}</span>
+</div>
+
+{% if candidate.summary or candidate.next_action %}
+<div class="mb-4 rounded-lg bg-white shadow p-3 text-sm">
+  {% if candidate.next_action %}<p class="font-semibold" data-live="next-action">Next action: {{ candidate.next_action }}</p>{% endif %}
+  {% if candidate.summary %}<p class="mt-1 text-slate-700 whitespace-pre-line" data-live="summary">{{ candidate.summary }}</p>{% endif %}
+</div>
+{% endif %}
+
+{% if candidate.rule %}
+<div class="mb-4 flex flex-wrap items-center gap-4 rounded-lg bg-red-50 border border-red-200 p-3 text-sm" data-live="rule">
+  {% if candidate.rule == "abuse" %}
+  <span>Abuse: <strong>repeated abusive messages</strong>, not a knock-out</span>
+  <span class="text-slate-600">Message: “{{ candidate.answer or "—" }}”</span>
+  {% else %}
+  <span>Failed knock-out: <strong>{{ candidate.rule }}</strong></span>
+  <span class="text-slate-600">Answer: “{{ candidate.answer or "—" }}”</span>
+  {% endif %}
+  {% with candidate_id = candidate.id, back = "/dashboard/candidates/" ~ candidate.id %}{% include "partials/decision.html" %}{% endwith %}
+</div>
+{% endif %}
+
+{% if candidate.status == "abandoned" %}
+<div class="mb-4 flex flex-wrap items-center gap-4 rounded-lg bg-slate-50 border p-3 text-sm">
+  <span>Stopped answering at <strong>{{ candidate.stage }}</strong></span>
+  <form method="post" action="/dashboard/candidates/{{ candidate.id }}/reopen">
+    <button class="rounded border px-3 py-1 text-sm bg-white">Reopen</button>
+  </form>
+</div>
+{% endif %}
+
+{% if candidate.flags %}
+<div class="mb-4">
+  {% for flag in candidate.flags %}<span class="inline-block rounded bg-amber-100 text-amber-800 px-2 py-0.5 mr-1 text-sm" data-live="flag-{{ flag }}">{{ flag }}</span>{% endfor %}
+</div>
+{% endif %}
+</div>
+
+<section class="space-y-4">
+  <div class="bg-white rounded-lg shadow overflow-x-auto">
+    <h2 class="font-semibold p-3 border-b" data-live="score">Priority score: {{ candidate.score }} / 100</h2>
+    <table class="w-full text-sm">
+      <thead class="text-left text-slate-500 border-b">
+        <tr><th class="p-3">Field</th><th class="p-3">Value</th><th class="p-3">Points</th></tr>
+      </thead>
+      <tbody>
+        {% for line in candidate.breakdown %}
+        <tr class="border-b last:border-0" data-live="points-{{ line.field }}">
+          <td class="p-3 font-medium">{{ line.field }}</td>
+          <td class="p-3">{{ line.display }}</td>
+          <td class="p-3">{{ line.points }} / {{ line.weight }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="bg-white rounded-lg shadow overflow-x-auto">
+    <h2 class="font-semibold p-3 border-b">Fields</h2>
+    <table class="w-full text-sm">
+      <thead class="text-left text-slate-500 border-b">
+        <tr><th class="p-3">Field</th><th class="p-3">Value</th><th class="p-3">Raw answer</th><th class="p-3">Confidence</th><th class="p-3">Verdict</th></tr>
+      </thead>
+      <tbody>
+        {% for field in candidate.fields %}
+        <tr class="border-b last:border-0 {{ 'bg-amber-50' if field.needs_review }}" data-live="field-{{ field.field }}">
+          <td class="p-3 font-medium">{{ field.field }}</td>
+          <td class="p-3">{{ field.display }}</td>
+          <td class="p-3 text-slate-600">{{ field.raw_answer or "—" }}</td>
+          <td class="p-3">{{ "%.2f"|format(field.confidence) if field.confidence is not none else "—" }}</td>
+          <td class="p-3">
+            <span class="{{ 'font-semibold text-amber-700' if field.needs_review }}">{{ field.verdict }}</span>
+            {% for flag in field.flags %}<span class="block text-xs text-amber-700">{{ flag }}</span>{% endfor %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="bg-white rounded-lg shadow">
+    <h2 class="font-semibold p-3 border-b">Events</h2>
+    <ol class="text-sm divide-y">
+      {% for event in candidate.events %}
+      <li class="p-3 flex gap-3" data-live="event-{{ loop.index }}">
+        <span class="text-slate-500">{{ event.created_at.strftime("%Y-%m-%d %H:%M") }}</span>
+        <span class="font-medium">{{ event.type }}</span>
+        <span class="text-slate-500">{{ event.stage }}</span>
+        {% if event.payload %}<span class="text-slate-500">{{ event.payload }}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+  </div>
+</section>

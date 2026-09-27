@@ -1,15 +1,21 @@
 version: "3"
 
 tasks:
+  default:
+    desc: List the available tasks
+    cmds:
+      - task --list
+    silent: true
+
   dev:install:
     desc: Install dependencies with uv
     cmds:
       - uv sync
 
   dev:run:
-    desc: Run the web app with auto-reload (chat at http://localhost:8000/chat, dashboard at /dashboard)
+    desc: Run the web app with auto-reload (chat at http://localhost:8000/chat, dashboard at /dashboard; uvicorn args after --, e.g. task dev:run -- --port 8001)
     cmds:
-      - uv run uvicorn app.api.main:app --reload
+      - uv run uvicorn app.api.main:app --reload {{.CLI_ARGS}}
     dotenv: [.env]
 
   dev:cli:
@@ -66,6 +72,11 @@ tasks:
     desc: Stop the container; the database stays in its volume
     cmds:
       - podman compose down
+
+  container:logs:
+    desc: Follow the container logs (Ctrl+C to stop)
+    cmds:
+      - podman compose logs --follow
 
   container:reset:
     desc: Stop the container and delete its database volume (after a schema change)
