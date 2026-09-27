@@ -309,6 +309,7 @@ class ScreeningService:
         # A question is forwarded to a recruiter; a message that is only a question uses no
         # attempt, while any answer given with it is still applied.
         asking = extraction.intent == "question"
+        only_a_question = asking and extraction.yes_no is None
         if asking:
             state.add_flag("question_for_recruiter")
             question = extraction.question or text
@@ -339,7 +340,7 @@ class ScreeningService:
                 new_value = (
                     extraction.yes_no is not True and getattr(extraction, confirmed) is not None
                 )
-                if not new_value and not (asking and extraction.yes_no is None):
+                if not new_value and not only_a_question:
                     self._apply_confirmation(
                         candidate, confirmed, extraction.yes_no is True, events
                     )
@@ -355,7 +356,7 @@ class ScreeningService:
                     state.recap_attempts = 0  # a correction: a new recap follows
                 elif extraction.yes_no is True:
                     state.recap_confirmed = True
-                elif not asking:
+                elif not only_a_question:
                     state.recap_attempts += 1
 
     def _apply_fields(

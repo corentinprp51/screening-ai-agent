@@ -286,6 +286,17 @@ def test_the_question_forwarded_cue_says_the_question_is_passed_on():
     assert "could not be used" not in model.prompt(2)
 
 
+def test_a_question_on_resuming_is_folded_into_the_opening_line():
+    model = ScriptedModel("ok")
+
+    adapter(model).reply(
+        ASK, CandidateState(), "es", [], frozenset({"resuming", "question_forwarded"})
+    )
+
+    assert "coming back after a silence" in model.prompt()
+    assert "in that same opening line" in model.prompt()
+
+
 def test_a_resuming_re_ask_drops_the_example_and_one_question_left_is_singular():
     model = ScriptedModel("ok")
     state = CandidateState(

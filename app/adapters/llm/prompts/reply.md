@@ -38,7 +38,11 @@ The candidate is coming back after a silence. Instead of acknowledging their las
 
 {% endif %}
 {% if "question_forwarded" in cues %}
+{% if "resuming" in cues %}
+The candidate also asked a question: in that same opening line, say in a few words that you pass it on to a recruiter, who will answer it; never answer it yourself.
+{% else %}
 The candidate asked a question. Instead of acknowledging their last answer, say in a few words that you pass it on to a recruiter, who will answer it; never answer it yourself. Then do the step below, within the same sentence limit.
+{% endif %}
 
 {% endif %}
 {% if kind == "Greet" %}

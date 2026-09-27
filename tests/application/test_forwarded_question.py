@@ -107,3 +107,35 @@ def test_a_question_at_a_confirmation_keeps_the_value_to_confirm():
     assert reply == "[fake] confirm:name=Ana López +question_forwarded"
     name = screening.candidate().state.field("name")
     assert name.unconfirmed.value == "Ana López" and name.attempts == 0
+
+
+def test_a_no_to_the_recap_sent_with_a_question_still_asks_what_to_change():
+    screening = consented()
+    screening.answer(*ALL_ANSWERS[1:])
+    screening.llm.queue(asks(yes_no=False))
+
+    reply = screening.service.handle_message(HANDLE, f"no, está mal. {QUESTION}")
+
+    assert reply == "[fake] ask_correction (attempt 1) +question_forwarded"
+
+
+def test_a_question_at_a_follow_up_keeps_the_follow_up_pending():
+    screening = consented()
+    screening.answer("Ana López", "expired")
+    screening.llm.queue(asks())
+
+    reply = screening.service.handle_message(HANDLE, QUESTION)
+
+    assert reply == "[fake] follow_up:license (validity) +question_forwarded"
+    assert screening.candidate().state.field("license").status == "incomplete"
+
+
+def test_a_question_before_consent_asks_for_the_consent_again():
+    screening = consented()
+    screening.service.apply("+34 600 999 888")
+    screening.llm.queue(asks())
+
+    reply = screening.service.handle_message("34600999888", QUESTION)
+
+    assert reply == "[fake] greet +question_forwarded"
+    assert screening.repo.get_by_handle("grupo_sazon", "34600999888").state.consent is None
