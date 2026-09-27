@@ -151,15 +151,14 @@ class ScreeningService:
             action = next_action(candidate.state, self._config)
             # The candidate message is stored after the LLM calls, but the reply follows it.
             recent = [*messages, self._message(candidate, "candidate", text)][-RECENT_MESSAGES:]
-            # A closing message is not a welcome back, nor a refocus.
-            cues: set[Cue] = set()
-            if not isinstance(action, Close):
-                if resuming:
-                    cues.add("resuming")
-                if extraction.intent == "abuse":
-                    cues.add("refocus")
+            # A closing message is not a welcome back, nor does it go back to a question.
+            cues = (
+                frozenset()
+                if isinstance(action, Close)
+                else self._cues(candidate, extraction, resuming)
+            )
             reply, usage = self._llm.reply(
-                action, candidate.state, candidate.state.language, recent, frozenset(cues)
+                action, candidate.state, candidate.state.language, recent, cues
             )
             self._record_llm_call(candidate, "reply", usage)
         except Exception as error:
@@ -191,6 +190,24 @@ class ScreeningService:
         self._repo.save(candidate)
         self._send(candidate, reply)
         return reply
+
+    def _cues(self, candidate: Candidate, extraction: Extraction, resuming: bool) -> frozenset[Cue]:
+        """How the reply is phrased. Frustration replaces the welcome back and the forwarded
+        question: they all open the reply (the question is still forwarded). A candidate who
+        already asked for a call is not offered it again. An abusive message only gets the
+        refocus: no welcome back, no call offer."""
+        if extraction.intent == "abuse":
+            return frozenset({"refocus"})
+        if extraction.sentiment == "frustrated" and "wants_human" not in candidate.state.flags:
+            return frozenset({"frustrated"})
+        cues: set[Cue] = set()
+        if resuming:
+            cues.add("resuming")
+        if extraction.intent == "question":
+            cues.add("question_forwarded")
+        if extraction.sentiment == "confused":
+            cues.add("confused")
+        return frozenset(cues)
 
     def _nudged_or_reopened_since_last_message(
         self, candidate: Candidate, messages: list[Message]
@@ -312,6 +329,15 @@ class ScreeningService:
             state.opted_out = True
             events.append(self._event(candidate, "opted_out"))
             return
+        # A question is forwarded to a recruiter; a message that is only a question uses no
+        # attempt, while any answer given with it is still applied.
+        asking = extraction.intent == "question"
+        only_a_question = asking and extraction.yes_no is None
+        if asking:
+            state.add_flag("question_for_recruiter")
+            question = extraction.question or text
+            events.append(self._event(candidate, "question_forwarded", question=question))
+        call_accepted = self._apply_sentiment(candidate, extraction, events)
         match pending:
             case Greet():
                 if extraction.yes_no is not None:
@@ -323,16 +349,23 @@ class ScreeningService:
                 changed_others = self._apply_fields(
                     candidate, others, extraction, pending, text, events
                 )
-                # A message only about other fields (e.g. a correction) uses no attempt.
+                # A message only about other fields (e.g. a correction) or accepting the call
+                # uses no attempt.
                 self._apply_field(
-                    candidate, asked, extraction, pending, text, events, not changed_others
+                    candidate,
+                    asked,
+                    extraction,
+                    pending,
+                    text,
+                    events,
+                    uses_attempt=not (changed_others or asking or call_accepted),
                 )
             case Confirm(field=confirmed):
                 # A new value instead of a yes is validated like any other answer.
                 new_value = (
                     extraction.yes_no is not True and getattr(extraction, confirmed) is not None
                 )
-                if not new_value:
+                if not new_value and not only_a_question:
                     self._apply_confirmation(
                         candidate, confirmed, extraction.yes_no is True, events
                     )
@@ -348,8 +381,23 @@ class ScreeningService:
                     state.recap_attempts = 0  # a correction: a new recap follows
                 elif extraction.yes_no is True:
                     state.recap_confirmed = True
-                else:
+                elif not only_a_question:
                     state.recap_attempts += 1
+
+    def _apply_sentiment(
+        self, candidate: Candidate, extraction: Extraction, events: list[Event]
+    ) -> bool:
+        """Flag a frustrated candidate, whose reply offers a call. A yes to that offer asks the
+        recruiter for a call and the screening goes on; True when it is accepted now."""
+        state = candidate.state
+        offered = "frustrated" in state.flags and "wants_human" not in state.flags
+        call_accepted = offered and extraction.call_requested is True
+        if call_accepted:
+            state.add_flag("wants_human")
+            events.append(self._event(candidate, "call_requested"))
+        if extraction.sentiment == "frustrated":
+            state.add_flag("frustrated")
+        return call_accepted
 
     def _apply_fields(
         self,

@@ -107,6 +107,24 @@ def test_the_extract_prompt_shows_the_context_of_the_message():
     assert "Glovo, Uber Eats, Just Eat, Rappi, Didi Food" in prompt
 
 
+def test_a_question_is_extracted_with_its_text_and_the_fields_given_with_it():
+    model = ScriptedModel(
+        {
+            "language": "es",
+            "intent": "question",
+            "question": "¿cuánto se paga?",
+            "name": {"value": "Ana López", "raw_answer": "Soy Ana López", "confidence": 1.0},
+        }
+    )
+
+    extraction = extract(adapter(model), "¿cuánto se paga? Soy Ana López")
+
+    assert extraction.intent == "question"
+    assert extraction.question == "¿cuánto se paga?"
+    assert extraction.name.value == "Ana López"
+    assert "`question` when the candidate asks something" in model.prompt()
+
+
 def test_the_candidate_message_is_capped_and_cannot_close_its_delimiters():
     model = ScriptedModel({"language": "es"})
 
@@ -274,6 +292,31 @@ def test_the_refocus_cue_brings_the_candidate_back_to_the_step():
     assert "refocus" not in model.prompt(1)
 
 
+def test_the_question_forwarded_cue_says_the_question_is_passed_on():
+    model = ScriptedModel("ok", "ok", "ok")
+
+    adapter(model).reply(ASK, CandidateState(), "es", [], frozenset({"question_forwarded"}))
+    adapter(model).reply(ASK, CandidateState(), "es", [], frozenset())
+    adapter(model).reply(
+        Ask("schedule", attempt=1), CandidateState(), "es", [], frozenset({"question_forwarded"})
+    )
+
+    assert "pass it on to a recruiter" in model.prompt(0)
+    assert "pass it on to a recruiter" not in model.prompt(1)
+    assert "could not be used" not in model.prompt(2)
+
+
+def test_a_question_on_resuming_is_folded_into_the_opening_line():
+    model = ScriptedModel("ok")
+
+    adapter(model).reply(
+        ASK, CandidateState(), "es", [], frozenset({"resuming", "question_forwarded"})
+    )
+
+    assert "coming back after a silence" in model.prompt()
+    assert "in that same opening line" in model.prompt()
+
+
 def test_a_resuming_re_ask_drops_the_example_and_one_question_left_is_singular():
     model = ScriptedModel("ok")
     state = CandidateState(
@@ -285,6 +328,33 @@ def test_a_resuming_re_ask_drops_the_example_and_one_question_left_is_singular()
     assert "worded differently" in model.prompt()
     assert "Por ejemplo" not in model.prompt()
     assert "1 question left" in model.prompt()
+
+
+def test_the_extraction_reads_the_sentiment_and_the_answer_to_the_call_offer():
+    model = ScriptedModel({"language": "es", "sentiment": "frustrated", "call_requested": True})
+
+    extraction = extract(adapter(model), "sí, prefiero que me llaméis")
+
+    assert extraction.sentiment == "frustrated"
+    assert extraction.call_requested is True
+
+
+@pytest.mark.parametrize(
+    ("cue", "instruction"),
+    [
+        ("resuming", "coming back after a silence"),
+        ("confused", "did not understand your last message"),
+        ("frustrated", "talk to a person from the team"),
+    ],
+)
+def test_each_cue_instruction_reaches_the_reply_prompt(cue, instruction):
+    model = ScriptedModel("ok", "ok")
+
+    adapter(model).reply(ASK, CandidateState(), "es", [], frozenset({cue}))
+    adapter(model).reply(ASK, CandidateState(), "es", [], frozenset())
+
+    assert instruction in model.prompt(0)
+    assert instruction not in model.prompt(1)
 
 
 @pytest.mark.parametrize(

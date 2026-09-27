@@ -130,3 +130,14 @@ def test_override_resumes_the_screening_and_resets_the_count():
     assert screening.events("knock_out_overridden") == []
     # A new abusive message gets a refocus again.
     assert abuse(screening) == "[fake] ask:name (attempt 0) +refocus"
+
+
+def test_an_abusive_message_only_gets_the_refocus_never_a_call_offer():
+    screening = consented()
+    screening.tick_at(1)  # a Nudge: the next reply would be a welcome back
+    screening.llm.queue(Extraction(intent="abuse", sentiment="frustrated"))
+
+    reply = screening.service.handle_message(HANDLE, "qué pesado eres, idiota")
+
+    assert reply == "[fake] ask:name (attempt 0) +refocus"
+    assert "frustrated" not in screening.candidate().state.flags
