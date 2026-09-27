@@ -35,8 +35,8 @@ def home():
 
 
 @router.get("/chat")
-def chat_start(request: Request):
-    return templates.TemplateResponse(request, "chat_start.html")
+def chat_start(request: Request, service: Screening):
+    return templates.TemplateResponse(request, "chat_start.html", {"persona": service.persona})
 
 
 @router.post("/chat")
@@ -50,7 +50,10 @@ def chat_apply(
         candidate = service.apply(phone, name)
     except ValueError as error:
         return templates.TemplateResponse(
-            request, "chat_start.html", {"error": str(error)}, status_code=422
+            request,
+            "chat_start.html",
+            {"persona": service.persona, "error": str(error)},
+            status_code=422,
         )
     return RedirectResponse(f"/chat/{candidate.handle}", status_code=303)
 
