@@ -35,6 +35,7 @@ def test_a_first_abuse_refocuses_on_the_pending_question_without_using_an_attemp
     reply = abuse(screening)
 
     assert reply == "[fake] ask:name (attempt 0) +refocus"
+    assert screening.llm.calls("reply")[-1]["cues"] == frozenset({"refocus"})
     candidate = screening.candidate()
     assert candidate.status == Status.IN_PROGRESS
     assert candidate.state.abuse_count == 1

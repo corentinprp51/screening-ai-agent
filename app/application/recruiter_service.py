@@ -153,7 +153,7 @@ class RecruiterService:
                 score=candidate.score.total,
                 flags=candidate.state.all_flags(),
                 last_activity=candidate.updated_at,
-                **self._failed_knock_out(candidate),
+                **self._proposal_reason(candidate),
                 **self._handoff(candidate),
             )
             for candidate in self._repo.list_candidates(self._config.client_id, status)
@@ -194,7 +194,7 @@ class RecruiterService:
             ],
             fields=fields,
             flags=candidate.state.all_flags(),
-            **self._failed_knock_out(candidate),
+            **self._proposal_reason(candidate),
             **self._handoff(candidate),
             messages=self._repo.list_messages(candidate_id),
             events=self._repo.list_events(candidate_id),
@@ -221,14 +221,13 @@ class RecruiterService:
         candidate, proposal = self._proposal(candidate_id)
         if proposal.reason == "abuse":
             candidate.state.abuse_count = 0
+            event_type, payload = "abuse_overridden", {}
         else:
             candidate.state.overridden_knock_outs.append(proposal.reason)
+            event_type, payload = "knock_out_overridden", {"rule": proposal.reason}
         action = next_action(candidate.state, self._config)
         reply = self._reply(candidate, action)
-        if proposal.reason == "abuse":
-            self._record(candidate, "abuse_overridden")
-        else:
-            self._record(candidate, "knock_out_overridden", rule=proposal.reason)
+        self._record(candidate, event_type, **payload)
         candidate.state.stage = stage_of(action)
         if isinstance(action, Close) and action.status == Status.REJECTION_PROPOSED:
             # Another knock-out had already failed (a volunteered answer): propose it now.
@@ -397,7 +396,7 @@ class RecruiterService:
             raise NotRejectionProposed(candidate_id)
         return candidate, proposal
 
-    def _failed_knock_out(self, candidate: Candidate) -> dict[str, str | None]:
+    def _proposal_reason(self, candidate: Candidate) -> dict[str, str | None]:
         """The rule and the candidate's answer, for a candidate in Rejection proposed. For
         abuse, the answer is the message recorded with the proposal."""
         if candidate.status != Status.REJECTION_PROPOSED:

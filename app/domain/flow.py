@@ -51,8 +51,8 @@ class AskCorrection:
 class Close:
     """For a proposed rejection, `reason` is the failed rule, `field` the field that failed
     it (None for `abuse`, which is behaviour, not a knock-out) and `within_hours` the delay in
-    which a recruiter replies. For a confirmed rejection,
-    `offer_contact` asks the message to offer contact if a nearby location opens."""
+    which a recruiter replies. For a confirmed rejection, `offer_contact` asks the message to
+    offer contact if a nearby location opens."""
 
     status: Status | None
     reason: str | None = None
@@ -72,9 +72,10 @@ def next_action(state: CandidateState, config: ClientConfig) -> Action:
     A recap answered neither yes nor with a correction asks what to change; the last
     attempt leaves it unconfirmed."""
     abusive = state.abuse_count >= ABUSE_LIMIT
-    if state.consent is None and not abusive:
-        return Greet()
-    if not state.consent:
+    if state.consent is None:
+        # Repeated abuse before consent is a declined consent: nothing may be kept.
+        return Close(status=None, reason="consent_declined") if abusive else Greet()
+    if state.consent is False:
         return Close(status=None, reason="consent_declined")
     if state.opted_out:
         return Close(status=Status.WITHDRAWN)
