@@ -49,6 +49,7 @@ With [Podman](https://podman.io/) and no Python setup on the host (`docker compo
 
 ```
 task container:up      # build and start, then http://localhost:8000/chat
+task container:logs    # follow the logs (Ctrl+C to stop)
 task container:down    # stop; the database stays in the screening-data volume
 task container:reset   # stop and delete the volume (after a schema change)
 ```

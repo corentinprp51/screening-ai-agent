@@ -67,6 +67,11 @@ tasks:
     cmds:
       - podman compose down
 
+  container:logs:
+    desc: Follow the container logs (Ctrl+C to stop)
+    cmds:
+      - podman compose logs --follow
+
   container:reset:
     desc: Stop the container and delete its database volume (after a schema change)
     cmds:
