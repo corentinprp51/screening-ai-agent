@@ -204,6 +204,13 @@ class RecruiterService:
             events=self._repo.list_events(candidate_id),
         )
 
+    def messages(self, candidate_id: int, after: int = 0) -> list[Message]:
+        """The messages stored after message id `after`, for the live candidate page."""
+        self._get(candidate_id)
+        return [
+            m for m in self._repo.list_messages(candidate_id) if m.id is not None and m.id > after
+        ]
+
     def confirm_rejection(self, candidate_id: int) -> None:
         """Reject the candidate and send the rejection message for the failed rule. An abuse
         rejection cites no requirement of the position."""

@@ -3,13 +3,6 @@
 {% block main_class %}max-w-[420px] mx-auto h-dvh flex flex-col shadow-xl{% endblock %}
 {% block head %}
 <style>
-  .wallpaper {
-    background-color: #efeae2;
-    background-image: radial-gradient(rgb(0 0 0 / 0.06) 1px, transparent 1px),
-                      radial-gradient(rgb(0 0 0 / 0.04) 1px, transparent 1px);
-    background-size: 22px 22px;
-    background-position: 0 0, 11px 11px;
-  }
   .row { display: flex; margin-top: 2px; }
   .row.candidate { justify-content: flex-end; }
   .row:not(.candidate + .candidate, .agent + .agent) { margin-top: 10px; }
