@@ -25,6 +25,12 @@ tasks:
       - uv run python -m app.cli
     dotenv: [.env]
 
+  dev:reset:
+    desc: Delete every candidate, message, event and consent drop-off, for a demo from an empty dashboard
+    cmds:
+      - uv run python -m app.reset
+    dotenv: [.env]
+
   dev:test:
     desc: Run the tests (extra pytest args after --, e.g. task dev:test -- tests/domain)
     cmds:

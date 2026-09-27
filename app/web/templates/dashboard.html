@@ -5,7 +5,15 @@
 {% set to_confirm = current == "rejection_proposed" %}
 <div class="flex items-baseline justify-between mb-4">
   <h1 class="text-2xl font-semibold">Candidates</h1>
-  <a href="/chat" class="bg-emerald-600 text-white rounded px-3 py-1.5 text-sm">New application</a>
+  <div class="flex gap-2">
+    {% if request.app.state.dev_routes %}
+    <button hx-post="/api/dev/reset" hx-swap="none"
+            hx-confirm="Delete every candidate, message and event?"
+            hx-on::after-request="if (event.detail.successful) location.reload()"
+            class="bg-white border border-red-300 text-red-700 rounded px-3 py-1.5 text-sm">Reset</button>
+    {% endif %}
+    <a href="/chat" class="bg-emerald-600 text-white rounded px-3 py-1.5 text-sm">New application</a>
+  </div>
 </div>
 
 {% include "partials/dashboard_nav.html" %}

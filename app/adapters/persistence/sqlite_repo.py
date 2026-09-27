@@ -154,6 +154,12 @@ class SqliteCandidateRepository:
                 query = query.where(ConsentDropOffRow.created_at >= since)
             return session.exec(query).one()
 
+    def reset(self) -> None:
+        with Session(self._engine) as session:
+            for table in (MessageRow, EventRow, CandidateRow, ConsentDropOffRow):
+                session.exec(delete(table))
+            session.commit()
+
 
 def _to_candidate(row: CandidateRow) -> Candidate:
     return Candidate(

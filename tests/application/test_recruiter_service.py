@@ -474,6 +474,24 @@ def test_reopening_an_unknown_candidate_fails(services):
         recruiter.reopen(999)
 
 
+def test_reset_deletes_every_candidate_message_event_and_drop_off(llm):
+    config = load_client_config("grupo_sazon")
+    repo = SqliteCandidateRepository(create_sqlite_engine("sqlite://"))
+    clock = FixedClock(START)
+    screening = ScreeningService(config=config, llm=llm, repo=repo, clock=clock)
+    recruiter = RecruiterService(config=config, llm=llm, repo=repo, clock=clock)
+    qualify(screening, "34600111222", "Ana López")
+    candidate_id = recruiter.queue()[0].id
+    repo.add_consent_drop_off("grupo_sazon", START)
+
+    recruiter.reset()
+
+    assert recruiter.queue() == []
+    assert repo.list_messages(candidate_id) == []
+    assert repo.list_events(candidate_id) == []
+    assert recruiter.impact().consent_drop_offs == 0
+
+
 STAGES = [
     "consent",
     "name",

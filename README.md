@@ -65,6 +65,7 @@ The container reads `.env` when present and keeps `DEV_ROUTES=false` unless `.en
 | `task dev:install` | Install dependencies with uv |
 | `task dev:run` | Web app with auto-reload |
 | `task dev:cli` | Screening in the terminal |
+| `task dev:reset` | Delete every candidate, message and event, for a demo from an empty dashboard |
 | `task dev:test` | pytest, FakeLLM only (args after `--`, e.g. `task dev:test -- tests/domain`) |
 | `task dev:smoke` | Scripted screening against the real LLM, printing each extraction, reply and token usage |
 | `task dev:evals` | LLM-played personas against the real LLM, written to `samples/conversations/` |
@@ -75,6 +76,10 @@ The container reads `.env` when present and keeps `DEV_ROUTES=false` unless `.en
 ### Demo the Nudges and the deadline
 
 Set `DEV_ROUTES=1` in `.env` and run `task dev:run`. The app then reads the time from a dev clock (the system time plus an offset), and `POST /api/dev/tick` with `{"hours": 1}` moves it forward and runs the sweep; try it from http://localhost:8000/docs. Start a screening in the chat, answer the greeting, then tick by 1, 19, 28 and 24 hours: the chat shows the three Nudges, and the candidate ends Abandoned on the dashboard (Qualified to review if only the recap was left). Without `DEV_ROUTES` the route does not exist.
+
+### Reset before a demo
+
+With `DEV_ROUTES=1`, the dashboard header has a Reset button: after a confirmation, it calls `POST /api/dev/reset`, which deletes every candidate, message, event and consent drop-off, then reloads an empty dashboard. `task dev:reset` does the same from the terminal, with or without the server running (it works on the database in `DATABASE_URL`). Without `DEV_ROUTES` the route does not exist and the button is not shown. The dev clock keeps its offset: restart the server to bring it back to the system time.
 
 ### Evals and sample conversations
 
@@ -139,9 +144,10 @@ app/
   domain/        pure Python: models, fields (validators), flow (next_action), areas, scoring, reengagement, summary
   application/   ports.py (LLMPort, CandidateRepository, Clock) + screening_service.py + recruiter_service.py
   adapters/      llm/ (fake_llm.py, pydantic_ai_llm.py, prompts/), persistence/ (SQLModel + SQLite), config/yaml_loader.py, clock.py
-  api/           deps.py (composition root), json_routes.py (/api), pages.py (HTML + HTMX), dev_routes.py (DEV_ROUTES only)
+  api/           deps.py (composition root), json_routes.py (/api), pages.py (HTML + HTMX), dev_routes.py (DEV_ROUTES only: tick, reset)
   web/templates/ Jinja2 pages and partials
   cli.py         terminal chat
+  reset.py       task dev:reset
 ```
 
 ## Key design decisions

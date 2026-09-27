@@ -265,6 +265,10 @@ class RecruiterService:
         self._record(candidate, "reopened")
         self._send(candidate, self._config.templates.reopen[candidate.state.language])
 
+    def reset(self) -> None:
+        """Empty the dashboard before a demo: every candidate and all the data behind it."""
+        self._repo.reset()
+
     def impact(self) -> Impact:
         """The section 1 metrics over the last 30 days, from the candidates who applied
         since, their messages and events, and the consent drop-offs."""
