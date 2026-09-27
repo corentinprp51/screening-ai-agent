@@ -2,10 +2,11 @@
 
 Turn: extract (LLM) → validate (code) → update state → next_action() and priority score
 (code) → reply for that action (LLM) → summary when the questions stop (LLM) → persist.
+The sweep (`tick`) nudges silent candidates and ends the screenings silent past the deadline.
 """
 
 import re
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import JsonValue
@@ -47,6 +48,14 @@ from app.domain.models import (
     Place,
     Status,
     Summary,
+)
+from app.domain.reengagement import (
+    Deadline,
+    Nudge,
+    due_step,
+    questions_left,
+    silence,
+    silent_outcome,
 )
 from app.domain.scoring import priority_score
 from app.domain.summary import SUMMARIZED_STATUSES, summary_facts
@@ -167,12 +176,58 @@ class ScreeningService:
         self._send(candidate, reply)
         return reply
 
+    def tick(self) -> None:
+        """The sweep, run on a schedule: recompute the priority score of every open
+        candidate, nudge the silent ones who gave consent, and end the screenings silent
+        past the deadline."""
+        now = self._clock.now()
+        for status in (Status.IN_PROGRESS, Status.REJECTION_PROPOSED):
+            for candidate in self._repo.list_candidates(self._config.client_id, status):
+                candidate.score = priority_score(candidate.state, self._config.scoring, now.date())
+                match self._due_step(candidate, now) if status == Status.IN_PROGRESS else None:
+                    case Deadline() if candidate.state.consent is None:
+                        # No answer to the greeting: erased, only counted as a drop-off.
+                        self._repo.delete(candidate.id)
+                        self._repo.add_consent_drop_off(self._config.client_id, now)
+                        continue
+                    case Deadline():
+                        self._end_silent_screening(candidate)
+                        candidate.updated_at = now
+                    case Nudge(number=number) if candidate.state.consent:
+                        self._send_nudge(candidate, number)
+                        candidate.updated_at = now
+                self._repo.save(candidate)
+
     def candidate(self, handle: str) -> Candidate | None:
         return self._repo.get_by_handle(self._config.client_id, handle)
 
     def transcript(self, handle: str) -> list[Message]:
         candidate = self.candidate(handle)
         return self._repo.list_messages(candidate.id) if candidate else []
+
+    def _due_step(self, candidate: Candidate, now: datetime) -> Nudge | Deadline | None:
+        messages = self._repo.list_messages(candidate.id)
+        silent = silence(messages, self._repo.list_events(candidate.id))
+        return due_step(silent.asked_at, silent.last_nudge, now, self._config) if silent else None
+
+    def _send_nudge(self, candidate: Candidate, number: int) -> None:
+        first_name = candidate.name.split()[0] if candidate.name else None
+        left = questions_left(candidate.state, self._config)
+        self._record(candidate, "nudge_sent", number=number)
+        self._send(
+            candidate, self._config.nudge(candidate.state.language, number, first_name, left)
+        )
+
+    def _end_silent_screening(self, candidate: Candidate) -> None:
+        """Qualified to review, with its summary, or Abandoned at the stage the candidate
+        dropped off at."""
+        candidate.status = silent_outcome(candidate.state, self._config)
+        if candidate.status == Status.QUALIFIED_TO_REVIEW:
+            candidate.state.stage = "closed"
+            self._record(candidate, "outcome", status=candidate.status)
+            self._summarize(candidate)
+        else:
+            self._record(candidate, "abandoned", stage=candidate.state.stage)
 
     def _summarize(self, candidate: Candidate) -> None:
         """A summary failure does not stop the turn: the reply is still sent."""

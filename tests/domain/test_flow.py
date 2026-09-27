@@ -34,6 +34,8 @@ CONFIG = ClientConfig(
     review_delay_hours=24,
     call_within_hours=48,
     confidence_threshold=0.7,
+    nudge_delays_hours=[1],
+    deadline_hours=72,
     service_areas={"ES": {"Madrid": []}},
     platforms=["Glovo"],
     scoring=Scoring(
@@ -44,6 +46,7 @@ CONFIG = ClientConfig(
         greeting={"es": "hola", "en": "hi"},
         fallback={"es": "perdona", "en": "sorry"},
         after_close={"es": "gracias", "en": "thanks"},
+        nudges={"es": ["¿seguimos?"], "en": ["shall we?"]},
     ),
 )
 VALID_NAME = FieldState(status="valid", value="Ana López")

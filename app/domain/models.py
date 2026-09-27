@@ -2,7 +2,7 @@
 
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Literal, get_args
 
 from pydantic import BaseModel, BeforeValidator, Field, JsonValue, model_validator
 
@@ -116,6 +116,7 @@ class Templates(BaseModel):
     greeting: dict[Language, str]
     fallback: dict[Language, str]
     after_close: dict[Language, str]
+    nudges: dict[Language, list[str]]  # one per nudge delay, in order
 
 
 class ScoreWeights(BaseModel):
@@ -157,14 +158,37 @@ class ClientConfig(BaseModel):
     review_delay_hours: int = Field(gt=0)  # a recruiter replies to a proposed rejection within
     call_within_hours: int = Field(gt=0)  # a recruiter calls a qualified candidate within
     confidence_threshold: float = Field(ge=0, le=1)  # below it, a value is confirmed first
+    nudge_delays_hours: list[int] = Field(min_length=1)  # after the last unanswered question
+    deadline_hours: int = Field(gt=0)  # after it, a silent screening ends
     service_areas: ServiceAreas = Field(min_length=1)
     platforms: list[str] = Field(min_length=1)  # known delivery platforms, anything else is other
     scoring: Scoring
     templates: Templates
 
+    @model_validator(mode="after")
+    def _one_nudge_per_delay(self) -> "ClientConfig":
+        delays = self.nudge_delays_hours
+        if delays != sorted(set(delays)) or delays[0] <= 0 or delays[-1] >= self.deadline_hours:
+            raise ValueError("The nudge delays must increase, from above 0 to below the deadline")
+        if set(self.templates.nudges) != set(get_args(Language)):
+            raise ValueError("The nudges need templates in every language")
+        for language, nudges in self.templates.nudges.items():
+            if len(nudges) != len(delays):
+                raise ValueError(f"The {language} nudges need one template per nudge delay")
+        return self
+
     def greeting(self, language: Language) -> str:
         return self.templates.greeting[language].format(
             agent_name=self.persona.agent_name, client_name=self.persona.client_name
+        )
+
+    def nudge(
+        self, language: Language, number: int, first_name: str | None, questions_left: int
+    ) -> str:
+        """The nudge template `number` (from 1). `{name}` is ", <first name>", or empty
+        while the name is unknown."""
+        return self.templates.nudges[language][number - 1].format(
+            name=f", {first_name}" if first_name else "", questions_left=questions_left
         )
 
 

@@ -43,6 +43,12 @@ service_areas:
 # Known delivery platforms: an experience platform is mapped to one of them, anything else to "other".
 platforms: [Glovo, Uber Eats, Just Eat, Rappi, Didi Food]
 
+# A silent candidate gets a nudge at each delay after their last unanswered question
+# (templates.nudges). At the deadline the screening ends: Abandoned, Qualified to review
+# when only the recap is unconfirmed, or erased when the greeting was never answered.
+nudge_delays_hours: [1, 20, 48]
+deadline_hours: 72
+
 # The priority score (0-100) ranks the queue. Weights: the most points per field, adding up to 100.
 scoring:
   weights:
@@ -72,3 +78,14 @@ templates:
   after_close:
     es: Gracias por tu mensaje, un reclutador lo revisará.
     en: Thanks for your message, a recruiter will review it.
+  # One per nudge delay, in order. {name} is ", <first name>" (empty while unknown);
+  # {questions_left} counts the open fields and the recap.
+  nudges:
+    es:
+      - "¿Seguimos{name}? Ya casi está, preguntas pendientes: {questions_left}."
+      - "¿Retomamos{name}? Tu candidatura sigue abierta, preguntas pendientes: {questions_left}."
+      - "Último recordatorio{name}: ¿terminamos tu candidatura? Preguntas pendientes: {questions_left}."
+    en:
+      - "Shall we carry on{name}? Almost done, questions left: {questions_left}."
+      - "Shall we pick up where we left off{name}? Your application is still open, questions left: {questions_left}."
+      - "Last reminder{name}: shall we finish your application? Questions left: {questions_left}."
