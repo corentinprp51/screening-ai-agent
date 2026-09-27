@@ -21,9 +21,11 @@ class Screening:
     def __init__(self) -> None:
         self.clock = FixedClock(START)
         self.repo = SqliteCandidateRepository(create_sqlite_engine("sqlite://"))
+        self.config = load_client_config("grupo_sazon")
+        self.llm = FakeLLM()
         self.service = ScreeningService(
-            config=load_client_config("grupo_sazon"),
-            llm=FakeLLM(),
+            config=self.config,
+            llm=self.llm,
             repo=self.repo,
             clock=self.clock,
         )

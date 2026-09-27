@@ -17,6 +17,9 @@ FieldType = Literal[
     "experience",
     "start_date",
 ]
+# How the reply is phrased around its action, chosen by code (the action is unchanged).
+# `resuming`: the candidate writes back after a Nudge or after Abandoned.
+Cue = Literal["resuming"]
 AvailabilityOption = Literal["full_time", "part_time", "weekends"]
 ScheduleOption = Literal["morning", "afternoon", "evening", "flexible"]
 VehicleType = Literal["car", "moped_motorcycle"]
