@@ -77,6 +77,7 @@ LLM provider: OpenAI through PydanticAI (`adapters/llm/pydantic_ai_llm.py`), pic
 task dev:install                          # uv sync
 task dev:run                              # web app with reload, chat at http://localhost:8000/chat
 task dev:cli                              # terminal chat
+task dev:reset                            # delete every candidate, message and event (empty dashboard)
 task dev:smoke                            # scripted messages against the real LLM (needs .env)
 task dev:test                             # pytest (args after --: task dev:test -- tests/domain)
 task dev:format                           # ruff format

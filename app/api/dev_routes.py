@@ -1,11 +1,12 @@
-"""Dev-only routes, included when DEV_ROUTES is set: move the clock to demo the sweep."""
+"""Dev-only routes, included when DEV_ROUTES is set: move the clock to demo the sweep, reset the
+data before a demo."""
 
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from app.api.deps import DevClock, Screening
+from app.api.deps import DevClock, Recruiter, Screening
 
 router = APIRouter(prefix="/api/dev")
 
@@ -24,3 +25,9 @@ def advance_and_tick(body: AdvanceIn, clock: DevClock, service: Screening) -> Cl
     clock.advance(timedelta(hours=body.hours))
     service.tick()
     return ClockOut(now=clock.now())
+
+
+@router.post("/reset", status_code=204)
+def reset(service: Recruiter) -> None:
+    """Delete every candidate, message, event and consent drop-off."""
+    service.reset()

@@ -287,15 +287,14 @@ def test_page_override_redirects_back(client):
 
 
 def _dev_client(dev_routes: bool) -> TestClient:
+    config = load_client_config("grupo_sazon")
+    repo = SqliteCandidateRepository(create_sqlite_engine("sqlite://"))
     clock = OffsetClock()
-    screening = ScreeningService(
-        config=load_client_config("grupo_sazon"),
-        llm=FakeLLM(),
-        repo=SqliteCandidateRepository(create_sqlite_engine("sqlite://")),
-        clock=clock,
-    )
+    screening = ScreeningService(config=config, llm=FakeLLM(), repo=repo, clock=clock)
+    recruiter = RecruiterService(config=config, llm=FakeLLM(), repo=repo, clock=clock)
     dev_app = create_app(with_dev_routes=dev_routes)
     dev_app.dependency_overrides[get_screening_service] = lambda: screening
+    dev_app.dependency_overrides[get_recruiter_service] = lambda: recruiter
     dev_app.dependency_overrides[get_dev_clock] = lambda: clock
     return TestClient(dev_app)
 
@@ -316,3 +315,24 @@ def test_api_dev_tick_does_not_exist_without_dev_routes():
     client = _dev_client(dev_routes=False)
 
     assert client.post("/api/dev/tick", json={"hours": 1}).status_code == 404
+
+
+def test_api_dev_reset_empties_the_queue():
+    client = _dev_client(dev_routes=True)
+    client.post("/api/applications", json={"phone": HANDLE})
+
+    response = client.post("/api/dev/reset")
+
+    assert response.status_code == 204
+    assert client.get("/api/candidates").json() == []
+
+
+def test_api_dev_reset_does_not_exist_without_dev_routes():
+    client = _dev_client(dev_routes=False)
+
+    assert client.post("/api/dev/reset").status_code == 404
+
+
+def test_page_dashboard_shows_the_reset_button_only_with_dev_routes():
+    assert 'hx-post="/api/dev/reset"' in _dev_client(dev_routes=True).get("/dashboard").text
+    assert "/api/dev/reset" not in _dev_client(dev_routes=False).get("/dashboard").text

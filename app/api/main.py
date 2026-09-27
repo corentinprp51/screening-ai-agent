@@ -18,12 +18,14 @@ logging.getLogger("app").setLevel(logging.INFO)  # the token usage of each LLM c
 
 
 def create_app(with_dev_routes: bool) -> FastAPI:
-    """`with_dev_routes` adds the routes that move the clock, never on in production."""
+    """`with_dev_routes` adds the routes that move the clock and reset the data, and the
+    dashboard's Reset button; never on in production."""
     app = FastAPI(title="Candidate Screening", lifespan=lifespan)
     app.include_router(json_routes.router)
     app.include_router(pages.router)
     if with_dev_routes:
         app.include_router(dev_routes.router)
+    pages.templates.env.globals["dev_routes"] = with_dev_routes
     return app
 
 

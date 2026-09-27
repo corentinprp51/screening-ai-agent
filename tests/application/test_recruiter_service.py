@@ -472,3 +472,17 @@ def test_reopening_an_unknown_candidate_fails(services):
 
     with pytest.raises(UnknownCandidate):
         recruiter.reopen(999)
+
+
+def test_reset_deletes_every_candidate_message_event_and_drop_off(services):
+    screening, recruiter, clock = services
+    qualify(screening, "34600111222", "Ana López")
+    candidate_id = recruiter.queue()[0].id
+    recruiter._repo.add_consent_drop_off("grupo_sazon", START)
+
+    recruiter.reset()
+
+    assert recruiter.queue() == []
+    assert recruiter._repo.list_messages(candidate_id) == []
+    assert recruiter._repo.list_events(candidate_id) == []
+    assert recruiter.impact().consent_drop_offs == 0

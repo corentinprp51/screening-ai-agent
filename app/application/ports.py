@@ -93,6 +93,10 @@ class CandidateRepository(Protocol):
 
     def count_consent_drop_offs(self, client_id: str, since: datetime | None = None) -> int: ...
 
+    def reset(self) -> None:
+        """Delete every candidate, message, event and consent drop-off, for a fresh demo."""
+        ...
+
 
 class Clock(Protocol):
     def now(self) -> datetime: ...

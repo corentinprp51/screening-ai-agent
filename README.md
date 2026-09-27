@@ -10,6 +10,7 @@ Requires [uv](https://docs.astral.sh/uv/) and [Task](https://taskfile.dev/).
 task dev:install   # uv sync
 task dev:run       # web chat at http://localhost:8000/chat, dashboard at /dashboard
 task dev:cli       # the same screening in the terminal
+task dev:reset     # delete every candidate, message and event, for a demo from an empty dashboard
 task dev:test
 task dev:smoke     # scripted candidate messages against the real LLM (needs a key)
 task dev:evals     # LLM-played personas against the real LLM, written to samples/ (needs a key)
@@ -39,6 +40,10 @@ Without `LLM_MODEL`, the app runs on the FakeLLM, which does no language underst
 
 Set `DEV_ROUTES=1` in `.env` and run `task dev:run`. The app then reads the time from a dev clock (the system time plus an offset), and `POST /api/dev/tick` with `{"hours": 1}` moves it forward and runs the sweep; try it from http://localhost:8000/docs. Start a screening in the chat, answer the greeting, then tick by 1, 19, 28 and 24 hours: the chat shows the three Nudges, and the candidate ends Abandoned on the dashboard (Qualified to review if only the recap was left). Without `DEV_ROUTES` the route does not exist.
 
+### Reset before a demo
+
+With `DEV_ROUTES=1`, the dashboard header has a Reset button: after a confirmation, it calls `POST /api/dev/reset`, which deletes every candidate, message, event and consent drop-off, then reloads an empty dashboard. `task dev:reset` does the same from the terminal, with or without the server running (it works on the database in `DATABASE_URL`, `data/screening.db` by default). Without `DEV_ROUTES` the route does not exist and the button is not shown. The dev clock keeps its offset: restart the server to bring it back to the system time.
+
 ### Evals and sample conversations
 
 `task dev:evals` plays ten personas (`evals/personas.py`) against the real agent, in parallel, each on its own in-memory database and fixed clock; `task dev:evals -- frustrated silent` runs only those. gpt-6-luna plays the candidate from the persona's profile and judges the run. The silent persona answers twice, then ticks take it through the three Nudges to its 72 h outcome. It exits non-zero when a code check fails. It is never part of `dev:test`, which only tests the checks and the runner loop offline (FakeLLM agent, scripted candidate).
@@ -52,9 +57,10 @@ app/
   domain/        pure Python: models (state, extraction contract, config), fields (validators), flow (next_action), reengagement (Nudges, deadline)
   application/   ports.py (LLMPort, CandidateRepository, Clock) + screening_service.py + recruiter_service.py
   adapters/      llm/ (fake_llm.py, pydantic_ai_llm.py, prompts/), persistence/ (SQLModel + SQLite), config/yaml_loader.py, clock.py
-  api/           deps.py (composition root), json_routes.py (/api), pages.py (HTML + HTMX), dev_routes.py (DEV_ROUTES only)
+  api/           deps.py (composition root), json_routes.py (/api), pages.py (HTML + HTMX), dev_routes.py (DEV_ROUTES only: tick, reset)
   web/templates/ Jinja2 pages and partials
   cli.py         terminal chat
+  reset.py       task dev:reset
 ```
 
 A turn: LLM extraction → validation in code → state update → `next_action()` → LLM reply for that action → persist.
@@ -113,6 +119,7 @@ A turn: LLM extraction → validation in code → state update → `next_action(
 - **The Impact tab computes the section 1 metrics on read, over the last 30 days.** `RecruiterService.impact()` takes the candidates who applied in the window, their messages and `llm_call` events, and the consent drop-offs of the window (counted at the deadline, so from 30 days minus `deadline_hours` ago); the JSON route `/api/impact` and the dashboard's Impact tab both call it. A Completed screening is Qualified, Qualified to review, Rejection proposed or Rejected (see `CONTEXT.md`). The definitions: **completion rate** = Completed screenings / candidates who gave consent; **time to first message** = the average delay from the application to the first agent message; **recruiter hours saved per week** = (Completed screenings + contacted candidates × unanswered call attempts per candidate) × average call duration, scaled from 30 days to a week, where contacted includes the consent drop-offs and each unanswered attempt counts as a full call slot, since it takes one of a recruiter's daily calls; **recruiter time on qualified candidates** (an estimate, labelled so) = Qualified and Qualified to review / Completed screenings, assuming a recruiter spends as long on each; **needs-review share** = Completed screenings with a needs-review field / Completed screenings; **LLM cost per candidate** = the recorded tokens priced per million / candidates in the window. Each figure sits next to today's phone value and the pilot target, both from the YAML `impact` block: the completion baseline is 1 − the no-answer rate (40%), the qualified-time baseline 1 − the unqualified-time share (20%), the hours baseline the recruiters' weekly call time (13 × 15 calls × 5 days × the call duration), and the cost baseline one recruiter call (call duration × hourly cost). A ratio with nothing to divide by shows "—". A declined consent is erased with its events, so its tokens are not counted.
 - **Evals: code checks what it can decide, an LLM judge only tone and forbidden topics.** `evals/checks.py` asserts per persona the status, the rule of a proposed rejection, field statuses and values, flags, events and language, that no LLM call fell back, and the message rules on every reply the candidate got (checked again on the output rather than trusted to the adapter's guardrails; the recap is exempt from the length rules). The judge scores tone and forbidden topics from 1 to 5 with a reason; it never decides a pass, since its scores vary between runs. The candidate is a PydanticAI agent given the profile and the transcript each turn, at temperature 0.7 so wording varies; the judge runs at 0. The eval model is fixed to gpt-6-luna, independent of `LLM_MODEL`, so changing the agent's model does not change who plays and judges it. A run's transcript is kept as it goes, so an erased candidate (a declined consent) still has one to read.
 - **The queue is sorted by priority score, then by last activity.** Status tabs cover every status; Rejection proposed is labelled "To confirm". The dashboard has no authentication in v0.
+- **Reset is a dev route, wiping the data through the repository port.** `CandidateRepository.reset()` deletes every candidate, message, event and consent drop-off; `RecruiterService.reset()` calls it for both `POST /api/dev/reset` and `task dev:reset`. The route is included only with `DEV_ROUTES`, like `/api/dev/tick`, and `create_app` sets a `dev_routes` template global so the dashboard shows the Reset button only then. The route stays plain JSON (204, no HTMX headers): the button reloads the page itself after a successful call. No seed data for now.
 
 ## ATS integration
 
