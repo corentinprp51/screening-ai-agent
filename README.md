@@ -66,6 +66,7 @@ The container reads `.env` when present and keeps `DEV_ROUTES=false` unless `.en
 | `task dev:run` | Web app with auto-reload |
 | `task dev:cli` | Screening in the terminal |
 | `task dev:reset` | Delete every candidate, message and event, for a demo from an empty dashboard |
+| `task dev:seed` | Delete every candidate, then fill the dashboard with demo candidates against the real LLM |
 | `task dev:test` | pytest, FakeLLM only (args after `--`, e.g. `task dev:test -- tests/domain`) |
 | `task dev:smoke` | Scripted screening against the real LLM, printing each extraction, reply and token usage |
 | `task dev:evals` | LLM-played personas against the real LLM, written to `samples/conversations/` |
@@ -80,6 +81,8 @@ Set `DEV_ROUTES=1` in `.env` and run `task dev:run`. The app then reads the time
 ### Reset before a demo
 
 With `DEV_ROUTES=1`, the dashboard header has a Reset button: after a confirmation, it calls `POST /api/dev/reset`, which deletes every candidate, message, event and consent drop-off, then reloads an empty dashboard. `task dev:reset` does the same from the terminal, with or without the server running (it works on the database in `DATABASE_URL`). Without `DEV_ROUTES` the route does not exist and the button is not shown. The dev clock keeps its offset: restart the server to bring it back to the system time.
+
+`task dev:seed` resets too, then plays ten scripted candidates (`app/seed.py`) against the real LLM, applied from six days to thirty minutes back: Qualified in Spain, Mexico and English, Qualified to review, a proposed and a confirmed rejection, Withdrawn, Abandoned, In progress and a consent drop-off, so the queue and the Impact tab have figures before a demo. It prints each candidate's status, which may differ from the script's intent since the LLM's reading varies.
 
 ### Evals and sample conversations
 

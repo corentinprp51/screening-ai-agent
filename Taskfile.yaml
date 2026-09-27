@@ -36,6 +36,12 @@ tasks:
     cmds:
       - uv run pytest {{.CLI_ARGS}}
 
+  dev:seed:
+    desc: Delete every candidate, then fill the dashboard with demo candidates played against the real LLM (LLM_MODEL and OPENAI_API_KEY in .env)
+    cmds:
+      - uv run python -m app.seed
+    dotenv: [.env]
+
   dev:smoke:
     desc: Run scripted candidate messages against the real LLM (LLM_MODEL and OPENAI_API_KEY in .env)
     cmds:
