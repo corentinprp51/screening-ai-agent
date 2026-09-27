@@ -76,8 +76,9 @@ def seed():
     seed.candidate("5", Status.IN_PROGRESS, consent=None)  # the greeting is not answered yet
     # Before the 30 days: left out.
     seed.candidate("6", Status.QUALIFIED, days_ago=31, tokens=(9_000_000, 9_000_000))
+    # Counted at the 72 h deadline: the second one applied 31 days ago, before the window.
     seed.repo.add_consent_drop_off("grupo_sazon", NOW - timedelta(days=2))
-    seed.repo.add_consent_drop_off("grupo_sazon", NOW - timedelta(days=40))
+    seed.repo.add_consent_drop_off("grupo_sazon", NOW - timedelta(days=28))
     return seed
 
 
@@ -89,12 +90,8 @@ def test_the_funnel_counts_the_last_30_days(seed):
     impact = seed.service.impact()
 
     assert impact.since == NOW - timedelta(days=30)
-    assert (impact.candidates, impact.consent_drop_offs, impact.consented, impact.completed) == (
-        5,
-        1,
-        4,
-        3,
-    )
+    assert (impact.candidates, impact.consent_drop_offs, impact.contacted) == (5, 1, 6)
+    assert (impact.consented, impact.completed) == (4, 3)
 
 
 def test_the_completion_rate_counts_completed_screenings_out_of_consents(seed):

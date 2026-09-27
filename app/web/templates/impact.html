@@ -12,13 +12,13 @@
 {% block content %}
 <div class="flex items-baseline justify-between mb-4">
   <h1 class="text-2xl font-semibold">Impact</h1>
-  <p class="text-sm text-slate-500">Last 30 days, since {{ impact.since.strftime("%Y-%m-%d") }}</p>
+  <p class="text-sm text-slate-500">Last {{ impact.days }} days, since {{ impact.since.strftime("%Y-%m-%d") }}</p>
 </div>
 
 {% include "partials/dashboard_nav.html" %}
 
 <p class="mb-4 text-sm text-slate-600">
-  {{ impact.candidates + impact.consent_drop_offs }} contacted:
+  {{ impact.contacted }} contacted:
   {{ impact.consent_drop_offs }} never answered the greeting, {{ impact.consented }} gave consent,
   {{ impact.completed }} completed the screening.
 </p>
@@ -27,7 +27,7 @@
   <table class="w-full text-sm">
     <thead class="text-left text-slate-500 border-b">
       <tr>
-        <th class="p-3">Metric</th><th class="p-3">Last 30 days</th>
+        <th class="p-3">Metric</th><th class="p-3">Last {{ impact.days }} days</th>
         <th class="p-3">Today, by phone</th><th class="p-3">Target</th>
       </tr>
     </thead>

@@ -115,10 +115,12 @@ class Metric(BaseModel):
 
 
 class Impact(BaseModel):
+    days: int
     since: datetime
     currency: str
     candidates: int  # applied since, still kept (a declined consent is erased)
     consent_drop_offs: int  # greetings left unanswered, erased and only counted
+    contacted: int  # both
     consented: int
     completed: int
     metrics: list[Metric]
@@ -241,7 +243,10 @@ class RecruiterService:
             for candidate in self._repo.list_candidates(self._config.client_id)
             if candidate.created_at >= since
         ]
-        drop_offs = self._repo.count_consent_drop_offs(self._config.client_id, since)
+        # A drop-off is counted at the deadline, that long after its application.
+        drop_offs = self._repo.count_consent_drop_offs(
+            self._config.client_id, since + timedelta(hours=self._config.deadline_hours)
+        )
         consented = [c for c in candidates if c.state.consent]
         completed = [c for c in candidates if c.status in COMPLETED]
         qualified = [
@@ -271,10 +276,12 @@ class RecruiterService:
         llm_cost = sum(self._llm_cost(c) for c in candidates)
 
         return Impact(
+            days=IMPACT_DAYS,
             since=since,
             currency=baselines.currency,
             candidates=len(candidates),
             consent_drop_offs=drop_offs,
+            contacted=contacted,
             consented=len(consented),
             completed=len(completed),
             metrics=[
