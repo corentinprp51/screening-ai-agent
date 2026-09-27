@@ -116,8 +116,8 @@ class ScreeningService:
         if candidate.status != Status.IN_PROGRESS:
             return self._after_close(candidate, text)
 
-        # Both LLM calls happen before any write but their usage, so a failure leaves the
-        # state unchanged.
+        # Both LLM calls happen before any write except their `llm_call` events, so a failure
+        # leaves the state unchanged.
         pending = next_action(candidate.state, self._config)
         messages = self._repo.list_messages(candidate.id)
         last_agent_message = next(
