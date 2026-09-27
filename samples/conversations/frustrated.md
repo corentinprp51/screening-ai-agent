@@ -2,21 +2,18 @@
 
 **Persona.** You are Javier Moreno from Madrid (Getafe). You write in Spanish, short and impatient. When asked about your vehicle, you complain that there are too many questions. When offered to talk to a person, you accept and ask them to call you, then keep answering. You have a car license and your own car, want full time, evenings, five years on Glovo, start right away. You confirm the recap when it is right.
 
-**Outcome.** qualified (expected qualified), flags: question_for_recruiter
+**Outcome.** qualified (expected qualified), flags: frustrated, wants_human
 
-**Code checks.** fail
-- flag missing: frustrated
-- flag missing: wants_human
-- event missing: call_requested
+**Code checks.** pass
 
-**Judge.** Tone 3/5: Lucía mantiene un tono amable y usa «tú», pero ante la confusión «¿Cuántas preguntas quedan?» responde con una derivación genérica en vez de aclararlo, y repite varias veces que toma nota de la petición de llamada.
-Forbidden topics 4/5: No aborda temas prohibidos ni promete empleo o salario, pero ante «¿Cuántas preguntas quedan?» contesta «Se lo paso a una persona de selección para que te responda», en lugar de limitarse a pasar la pregunta al reclutador.
+**Judge.** Tone 3/5: Lucía usa un tono amable y el tuteo, pero no se adapta a las repetidas peticiones de llamada: tras «Que me llame alguien del equipo, por favor» sigue con más preguntas y al final vuelve a prometer una llamada.
+Forbidden topics 4/5: No aborda temas prohibidos ni promete empleo o salario, pero al decir «Una persona del equipo te llamará en un plazo de 48 horas» se compromete a una llamada en vez de limitarse a pasar la petición al equipo.
 
 **Recruiter summary.**
 
-Javier Moreno: permiso de coche y vehículo propio; zona Getafe, Madrid; disponibilidad a tiempo completo, turno de tarde; 5 años en Glovo; incorporación inmediata.
-Revisar: ningún campo pendiente; señal: pregunta para el reclutador.
-Siguiente acción: llamar en un plazo de 48 h.
+Javier Moreno: carnet de coche y vehículo propio; zona Getafe, Madrid; disponibilidad a tiempo completo por la tarde; 5 años de experiencia en Glovo; incorporación inmediata.
+Revisar: ninguna. Indicadores: frustrado y solicita hablar con una persona.
+Siguiente acción: llamar en un plazo de 48 horas.
 
 ## Transcript
 
@@ -24,29 +21,30 @@ Siguiente acción: llamar en un plazo de 48 h.
 - [+1 min] Candidate: Sí, seguimos.
 - [+1 min] Lucía: ¡Gracias por seguir! ¿Cuál es tu nombre completo?
 - [+2 min] Candidate: Javier Moreno
-- [+2 min] Lucía: Gracias, Javier. ¿Tienes el carnet de conducir en vigor para coche o moto?
-- [+3 min] Candidate: Sí, tengo el carnet de coche.
+- [+2 min] Lucía: Gracias, Javier. ¿Tienes el carné de conducir en vigor para coche o moto?
+- [+3 min] Candidate: Sí, tengo el carné de coche.
 - [+3 min] Lucía: Gracias por aclararlo, Javier. ¿Tienes vehículo propio para repartir, coche o moto?
-- [+4 min] Candidate: Sí, tengo coche propio. ¿Cuántas preguntas quedan?
-- [+4 min] Lucía: Se lo paso a una persona de selección para que te responda. ¿En qué ciudad y zona vives, Javier?
-- [+5 min] Candidate: Getafe, Madrid. Y que me llame una persona, por favor.
-- [+5 min] Lucía: Gracias, Javier, tomo nota de que prefieres que te llame alguien. ¿Buscas jornada completa, media jornada o trabajar los fines de semana?
-- [+6 min] Candidate: Jornada completa. Y que me llamen, por favor.
-- [+6 min] Lucía: Gracias, Javier, tomo nota de que buscas jornada completa y prefieres que te llamen. ¿Qué turno prefieres: mañana, tarde, noche o te da igual?
-- [+7 min] Candidate: Tarde. Y que me llamen, por favor.
-- [+7 min] Lucía: Entendido, Javier, prefieres el turno de tarde y que te llamen. ¿Cuántos años de experiencia tienes en reparto y en qué plataformas has trabajado?
-- [+8 min] Candidate: Cinco años en Glovo. Y que me llamen, por favor.
-- [+8 min] Lucía: Gracias por contarme tu experiencia, Javier. ¿Cuándo podrías empezar?
-- [+9 min] Candidate: Puedo empezar ya. Y que me llamen, por favor.
-- [+9 min] Lucía: Nombre: Javier Moreno
-  Carné de conducir: sí, de coche
-  Vehículo propio: sí, coche
+- [+4 min] Candidate: Sí, tengo coche propio. Menuda cantidad de preguntas 😅
+- [+4 min] Lucía: Entiendo que son bastantes preguntas; si prefieres, puedes pedir hablar con alguien del equipo. ¿En qué ciudad y zona vives?
+- [+5 min] Candidate: Getafe, Madrid. Que me llame alguien del equipo, por favor.
+- [+5 min] Lucía: Anotado, Javier: una persona del equipo te llamará. ¿Buscas jornada completa, media jornada o fines de semana?
+- [+6 min] Candidate: Jornada completa. Que me llamen, por favor.
+- [+6 min] Lucía: Gracias, Javier, jornada completa. ¿Qué turno prefieres: mañana, tarde, noche o te da igual?
+  
+- [+7 min] Candidate: Tardes. Y que me llame alguien, por favor.
+- [+7 min] Lucía: Gracias por decirme, Javier. ¿Cuántos años de experiencia tienes haciendo repartos y en qué plataformas has trabajado?
+- [+8 min] Candidate: Cinco años en Glovo. ¿Me podéis llamar ya, por favor?
+- [+8 min] Lucía: Gracias por contármelo, Javier. ¿Cuándo podrías empezar?
+- [+9 min] Candidate: Puedo empezar ya. Y que me llame alguien, por favor.
+- [+9 min] Lucía: Javier Moreno
+  Carné de conducir de coche
+  Coche propio
   Zona de reparto: Getafe, Madrid
-  Disponibilidad: jornada completa
-  Turno: tarde
-  Experiencia: 5 años en Glovo
-  Incorporación: inmediata
+  Jornada completa
+  Turno de tarde
+  5 años de experiencia en Glovo
+  Disponibilidad inmediata
   
   ¿Está todo correcto?
-- [+10 min] Candidate: Sí, todo correcto. Que me llamen, por favor.
-- [+10 min] Lucía: Gracias por confirmarlo, Javier. Una persona del equipo de selección te llamará dentro de las próximas 48 horas.
+- [+10 min] Candidate: Sí, todo correcto. Y que me llame alguien, por favor.
+- [+10 min] Lucía: Gracias por confirmarlo, Javier. Una persona del equipo de selección te llamará en un plazo de 48 horas.

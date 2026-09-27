@@ -160,7 +160,7 @@ class ScreeningService:
             cues = (
                 frozenset()
                 if isinstance(action, Close)
-                else self._cues(candidate, extraction, resuming)
+                else self._cues(candidate, extraction, resuming, events)
             )
             reply, usage = self._llm.reply(
                 action, candidate.state, candidate.state.language, recent, cues
@@ -196,11 +196,14 @@ class ScreeningService:
         self._send(candidate, reply)
         return reply
 
-    def _cues(self, candidate: Candidate, extraction: Extraction, resuming: bool) -> frozenset[Cue]:
+    def _cues(
+        self, candidate: Candidate, extraction: Extraction, resuming: bool, events: list[Event]
+    ) -> frozenset[Cue]:
         """How the reply is phrased. Frustration replaces the welcome back and the forwarded
         question: they all open the reply (the question is still forwarded). A candidate who
-        already asked for a call is not offered it again. An abusive message only gets the
-        refocus: no welcome back, no call offer."""
+        already asked for a call is not offered it again, and the reply confirms a call request
+        only on the turn it is recorded. An abusive message only gets the refocus: no welcome
+        back, no call offer."""
         if extraction.intent == "abuse":
             return frozenset({"refocus"})
         if extraction.sentiment == "frustrated" and "wants_human" not in candidate.state.flags:
@@ -212,6 +215,8 @@ class ScreeningService:
             cues.add("question_forwarded")
         if extraction.sentiment == "confused":
             cues.add("confused")
+        if any(event.type == "call_requested" for event in events):
+            cues.add("call_requested")
         return frozenset(cues)
 
     def _nudged_or_reopened_since_last_message(
@@ -344,7 +349,7 @@ class ScreeningService:
             state.add_flag("question_for_recruiter")
             question = extraction.question or text
             events.append(self._event(candidate, "question_forwarded", question=question))
-        call_accepted = self._apply_sentiment(candidate, extraction, events)
+        call_recorded = self._apply_sentiment(candidate, extraction, events)
         match pending:
             case Greet():
                 if extraction.yes_no is not None:
@@ -365,7 +370,7 @@ class ScreeningService:
                     pending,
                     text,
                     events,
-                    uses_attempt=not (changed_others or asking or call_accepted),
+                    uses_attempt=not (changed_others or asking or call_recorded),
                 )
             case Confirm(field=confirmed):
                 # A new value instead of a yes is validated like any other answer.
@@ -394,17 +399,17 @@ class ScreeningService:
     def _apply_sentiment(
         self, candidate: Candidate, extraction: Extraction, events: list[Event]
     ) -> bool:
-        """Flag a frustrated candidate, whose reply offers a call. A yes to that offer asks the
-        recruiter for a call and the screening goes on; True when it is accepted now."""
+        """Flag a frustrated candidate, whose reply offers a call. Asking for a call, offered
+        or not, asks the recruiter for one and the screening goes on; True when it is recorded
+        now. The extract prompt reads a bare yes as a call request only after the offer."""
         state = candidate.state
-        offered = "frustrated" in state.flags and "wants_human" not in state.flags
-        call_accepted = offered and extraction.call_requested is True
-        if call_accepted:
+        call_recorded = extraction.call_requested is True and "wants_human" not in state.flags
+        if call_recorded:
             state.add_flag("wants_human")
             events.append(self._event(candidate, "call_requested"))
         if extraction.sentiment == "frustrated":
             state.add_flag("frustrated")
-        return call_accepted
+        return call_recorded
 
     def _apply_fields(
         self,
